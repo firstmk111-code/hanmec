@@ -1,0 +1,22 @@
+{
+    "blocks":  [
+                   {
+                       "key":  "banner-title",
+                       "content":  "AI 영상인식으로\n완성되는 스마트 주차관제",
+                       "fontSize":  "",
+                       "fontWeight":  800,
+                       "letterSpacing":  0,
+                       "lineHeight":  1.24,
+                       "textAlign":  "left"
+                   },
+                   {
+                       "key":  "banner-desc",
+                       "content":  "차량 번호 인식부터 통합 관제, 무인 정산까지 —\n한맥아이피에스의 AI영상인식 플랫폼이 주차장 운영의\n모든 과정을 하나로 연결합니다.",
+                       "fontSize":  "",
+                       "fontWeight":  400,
+                       "letterSpacing":  -0.01,
+                       "lineHeight":  1.6,
+                       "textAlign":  "left"
+                   }
+               ]
+}

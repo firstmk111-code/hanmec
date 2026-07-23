@@ -1,0 +1,15 @@
+{
+    "popup":  {
+                  "enabled":  false,
+                  "title":  "",
+                  "content":  "",
+                  "imageUrl":  "",
+                  "linkUrl":  "",
+                  "newWindow":  true,
+                  "startDate":  "",
+                  "endDate":  "",
+                  "showTodayClose":  true,
+                  "width":  380
+              },
+    "notices":  []
+}
