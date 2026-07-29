@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    app.js — 한맥아이피에스 홈페이지 관리자
    ============================================================ */
 (function () {
@@ -15,8 +15,11 @@
 
   var LS_TOKEN = 'hanmec.admin.token';
 
+  /** 이미지 썸네일은 라이브 홈페이지에서 직접 불러온다 (관리자가 다른 도메인이어도 동작) */
+  function assetUrl(path) { return CONFIG.site + String(path).replace(/^\/+/, ''); }
+
   var S = {
-    gh: null,
+    be: null,
     doc: null,
     headSha: null,
     imgChanges: {},   // 원본경로 → { newPath, base64, previewUrl, fileName }
@@ -86,18 +89,18 @@
   }
 
   function startLocalPreview() {
-    var fake = {
+    S.be = {
+      mode: 'preview',
       headSha: function () { return Promise.resolve('local-preview'); },
-      getFileAt: function () {
-        return fetch('../' + CONFIG.file, { cache: 'no-store' }).then(function (r) {
-          if (!r.ok) throw new Error('index.html 을 읽지 못했습니다.');
-          return r.text();
-        });
+      getFile: function () {
+        return fetch('../' + CONFIG.file, { cache: 'no-store' })
+          .then(function (r) { if (!r.ok) throw new Error('로컬'); return r.text(); })
+          .catch(function () { return fetch(assetUrl(CONFIG.file), { cache: 'no-store' }).then(function (r) { return r.text(); }); });
       },
       commits: function () { return Promise.resolve([]); },
-      commit: function () { return Promise.reject(new Error('미리보기 모드에서는 발행할 수 없습니다.')); }
+      commitFiles: function () { return Promise.reject(new Error('미리보기 모드에서는 발행할 수 없습니다.')); },
+      logout: function () { return Promise.resolve(); }
     };
-    S.gh = fake;
     window.__admin = S;   // 로컬 점검용
     busy(true, '미리보기 불러오는 중…');
     loadSite().then(function () {
@@ -111,48 +114,77 @@
   function initLogin() {
     if (isLocalPreview()) return startLocalPreview();
 
-    var saved = localStorage.getItem(LS_TOKEN);
-    if (saved) { $('#tokenInput').value = saved; tryLogin(saved, true); }
+    busy(true, '연결 중…');
+    Backend.detect({ owner: CONFIG.owner, repo: CONFIG.repo, branch: CONFIG.branch }).then(function (be) {
+      S.be = be;
+      busy(false);
 
-    $('#loginBtn').addEventListener('click', function () { tryLogin($('#tokenInput').value, false); });
-    $('#tokenInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') tryLogin(this.value, false); });
+      if (be.mode === 'server') {
+        $('#loginServer').hidden = false;
+        $('#userInput').value = be.user || 'admin';
+        setTimeout(function () { $('#passInput').focus(); }, 60);
+        // 이미 로그인된 세션이 있으면 바로 들어간다
+        be.verify().then(function () { return enterAdmin(); }).catch(function () {});
+      } else {
+        $('#loginToken').hidden = false;
+        $('#tokenHelp').hidden = false;
+        var saved = localStorage.getItem(LS_TOKEN);
+        if (saved) { $('#tokenInput').value = saved; submitLogin(true); }
+      }
+
+      $('#loginBtn').addEventListener('click', function () { submitLogin(false); });
+      ['#userInput', '#passInput', '#tokenInput'].forEach(function (sel) {
+        var e = $(sel);
+        if (e) e.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') submitLogin(false); });
+      });
+    });
+
     $('#logout').addEventListener('click', function () {
       if (hasChanges() && !window.confirm('저장하지 않은 변경사항이 있습니다. 정말 로그아웃할까요?')) return;
       localStorage.removeItem(LS_TOKEN);
-      location.reload();
+      Promise.resolve(S.be && S.be.logout ? S.be.logout() : null).then(function () { location.reload(); });
     });
   }
 
   function loginError(msg) {
     var e = $('#loginErr');
-    e.textContent = msg;
+    e.textContent = msg || '';
     e.hidden = !msg;
   }
 
-  function tryLogin(token, silent) {
-    token = (token || '').trim();
-    if (!token) { loginError('토큰을 입력해 주세요.'); return; }
-    loginError('');
-    busy(true, '로그인 중…');
+  function enterAdmin() {
+    return loadSite().then(function () {
+      $('#login').hidden = true;
+      $('#shell').classList.add('on');
+      busy(false);
+    });
+  }
 
-    var gh = new GitHub({ owner: CONFIG.owner, repo: CONFIG.repo, branch: CONFIG.branch, token: token });
-    gh.verify()
-      .then(function (info) {
-        if (!info.canPush) throw new Error('이 토큰에는 수정 권한이 없습니다. 토큰 권한에서 Contents를 "Read and write"로 설정해 주세요.');
-        S.gh = gh;
-        if ($('#remember').checked) localStorage.setItem(LS_TOKEN, token);
-        return loadSite();
-      })
+  function submitLogin(silent) {
+    var be = S.be;
+    if (!be) return;
+    loginError('');
+
+    var creds;
+    if (be.mode === 'server') {
+      creds = { user: $('#userInput').value.trim(), pass: $('#passInput').value };
+      if (!creds.pass) { loginError('비밀번호를 입력해 주세요.'); return; }
+    } else {
+      creds = { token: $('#tokenInput').value.trim() };
+      if (!creds.token) { loginError('토큰을 입력해 주세요.'); return; }
+    }
+
+    busy(true, '로그인 중…');
+    be.login(creds)
       .then(function () {
-        $('#login').hidden = true;
-        $('#shell').classList.add('on');
-        busy(false);
-        toast('로그인되었습니다.', 'ok');
+        if (be.mode === 'token' && $('#remember').checked) localStorage.setItem(LS_TOKEN, creds.token);
+        return enterAdmin();
       })
+      .then(function () { toast('로그인되었습니다.', 'ok'); })
       .catch(function (err) {
         busy(false);
-        if (silent) { localStorage.removeItem(LS_TOKEN); loginError(err.message); }
-        else loginError(err.message);
+        if (silent && be.mode === 'token') localStorage.removeItem(LS_TOKEN);
+        loginError(err.message);
       });
   }
 
@@ -160,9 +192,9 @@
 
   function loadSite() {
     busy(true, '홈페이지 내용을 불러오는 중…');
-    return S.gh.headSha().then(function (sha) {
+    return S.be.headSha().then(function (sha) {
       S.headSha = sha;
-      return S.gh.getFileAt(CONFIG.file, sha);
+      return S.be.getFile(CONFIG.file, sha);
     }).then(function (html) {
       S.doc = new SiteDoc(html);
       S.blockCache = {};
@@ -243,16 +275,16 @@
 
   function loadCommits(host, limit) {
     host.innerHTML = '<div class="empty">불러오는 중…</div>';
-    S.gh.commits(limit).then(function (list) {
+    S.be.commits(limit).then(function (list) {
       host.innerHTML = '';
       if (!list.length) { host.innerHTML = '<div class="empty">이력이 없습니다.</div>'; return; }
       list.forEach(function (c) {
-        var d = new Date(c.commit.author.date);
+        var d = new Date(c.date);
         var dt = d.getFullYear() + '.' + pad(d.getMonth() + 1) + '.' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
         host.appendChild(el('div', { class: 'cm' }, [
           el('div', { class: 'dt', text: dt }),
-          el('div', { class: 'ms', text: c.commit.message.split('\n')[0] }),
-          el('a', { href: c.html_url, target: '_blank', rel: 'noopener', text: '보기 ↗' })
+          el('div', { class: 'ms', text: String(c.message).split('\n')[0] }),
+          el('a', { href: c.url, target: '_blank', rel: 'noopener', text: '보기 ↗' })
         ]));
       });
     }).catch(function (e) { host.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
@@ -305,7 +337,7 @@
 
     list.forEach(function (im) {
       var ch = S.imgChanges[im.path];
-      var src = ch ? ch.previewUrl : ('../' + im.path);
+      var src = ch ? ch.previewUrl : assetUrl(im.path);
       var uses = uniq(im.uses.map(useLabel));
 
       // 원본 이미지가 커서(전체 60MB 이상) 브라우저 기본 지연 로딩에 맡긴다
@@ -324,7 +356,7 @@
         el('div', { class: 'img-act' }, [
           el('button', { class: 'btn sm primary', text: ch ? '다시 교체' : '교체', onclick: function () { pickImage(im); } }),
           ch ? el('button', { class: 'btn sm', text: '되돌리기', onclick: function () { undoImage(im.path); } })
-             : el('button', { class: 'btn sm', text: '원본', onclick: function () { window.open('../' + im.path, '_blank'); } })
+             : el('button', { class: 'btn sm', text: '원본', onclick: function () { window.open(assetUrl(im.path), '_blank'); } })
         ])
       ]);
       grid.appendChild(card);
@@ -357,7 +389,7 @@
   function previewReplace(im, r) {
     var body = el('div', {}, [
       el('div', { class: 'cmp' }, [
-        el('figure', {}, [el('figcaption', { text: '현재' }), el('div', { class: 'box' }, [el('img', { src: S.imgChanges[im.path] ? S.imgChanges[im.path].previewUrl : '../' + im.path })])]),
+        el('figure', {}, [el('figcaption', { text: '현재' }), el('div', { class: 'box' }, [el('img', { src: S.imgChanges[im.path] ? S.imgChanges[im.path].previewUrl : assetUrl(im.path) })])]),
         el('figure', {}, [el('figcaption', { text: '새 이미지' }), el('div', { class: 'box' }, [el('img', { src: r.dataUrl })])])
       ]),
       el('p', { class: 'hint', style: 'margin-top:14px', text: '새 이미지: ' + r.name + ' · ' + r.w + '×' + r.h + 'px · ' + fmtSize(r.size) + (r.resized ? ' (자동 최적화됨)' : '') }),
@@ -619,7 +651,7 @@
       (item.imgs || []).forEach(function (src, i) {
         var ch = S.imgChanges[src];
         thumbs.appendChild(el('div', { class: 't' }, [
-          el('img', { src: ch ? ch.previewUrl : '../' + src, loading: 'lazy', alt: '' }),
+          el('img', { src: ch ? ch.previewUrl : assetUrl(src), loading: 'lazy', alt: '' }),
           el('button', { title: '삭제', text: '×', onclick: function () {
             perfMutate(function (p) { p[cat][idx].imgs.splice(i, 1); });
             renderPerf();
@@ -868,7 +900,7 @@
         ]),
         el('div', { class: 'row', style: 'align-items:flex-start' }, [
           el('div', { class: 'thumbs' }, [
-            c.img ? el('div', { class: 't' }, [el('img', { src: ch ? ch.previewUrl : '../' + c.img, alt: '' })]) : null,
+            c.img ? el('div', { class: 't' }, [el('img', { src: ch ? ch.previewUrl : assetUrl(c.img), alt: '' })]) : null,
             el('div', { class: 'add', text: c.img ? '변경' : '+ 사진', onclick: function () { addArchiveImage(i); } })
           ]),
           el('div', { style: 'flex:1;min-width:240px' }, [
@@ -1008,25 +1040,20 @@
       if (!ok) return;
       busy(true, '발행 준비 중…');
 
-      // 1) 다른 곳에서 먼저 바뀌지 않았는지 확인
-      return S.gh.headSha().then(function (sha) {
-        if (sha !== S.headSha) {
-          throw new Error('다른 곳에서 홈페이지가 먼저 수정되었습니다. 페이지를 새로고침한 뒤 다시 작업해 주세요.');
-        }
-        // 2) 이미지 경로 반영
-        Object.keys(S.imgChanges).forEach(function (k) {
-          var c = S.imgChanges[k];
-          if (!c.isNew) S.doc.renameImage(k, c.newPath);
-        });
-
-        var files = Object.keys(S.imgChanges).map(function (k) {
-          return { path: S.imgChanges[k].newPath, base64: S.imgChanges[k].base64 };
-        });
-        files.push({ path: CONFIG.file, text: S.doc.serialize() });
-
-        var msg = '홈페이지 수정: ' + parts.join(', ') + '\n\n관리자 페이지에서 발행';
-        return S.gh.commit(files, msg, function (m) { busy(true, m); });
+      // 교체한 이미지의 새 경로를 문서에 반영
+      Object.keys(S.imgChanges).forEach(function (k) {
+        var c = S.imgChanges[k];
+        if (!c.isNew) S.doc.renameImage(k, c.newPath);
       });
+
+      var files = Object.keys(S.imgChanges).map(function (k) {
+        return { path: S.imgChanges[k].newPath, base64: S.imgChanges[k].base64 };
+      });
+      files.push({ path: CONFIG.file, text: S.doc.serialize() });
+
+      var msg = '홈페이지 수정: ' + parts.join(', ') + '\n\n관리자 페이지에서 발행';
+      // baseSha 를 함께 보내 다른 사람이 먼저 발행했으면 덮어쓰지 않도록 한다
+      return S.be.commitFiles(files, msg, S.headSha, function (m) { busy(true, m); });
     }).then(function (res) {
       if (!res) { busy(false); return; }
       busy(false);

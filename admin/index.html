@@ -18,16 +18,32 @@
 
     <div class="login-err" id="loginErr" hidden></div>
 
-    <label class="field">
-      <span>GitHub 액세스 토큰</span>
-      <input type="password" class="input" id="tokenInput" placeholder="ghp_… 또는 github_pat_…" autocomplete="current-password">
-    </label>
+    <!-- 서버 모드: 아이디 / 비밀번호 -->
+    <div id="loginServer" hidden>
+      <label class="field">
+        <span>아이디</span>
+        <input type="text" class="input" id="userInput" placeholder="admin" autocomplete="username">
+      </label>
+      <label class="field">
+        <span>비밀번호</span>
+        <input type="password" class="input" id="passInput" placeholder="비밀번호" autocomplete="current-password">
+      </label>
+    </div>
+
+    <!-- 토큰 모드: GitHub 토큰 -->
+    <div id="loginToken" hidden>
+      <label class="field">
+        <span>GitHub 액세스 토큰</span>
+        <input type="password" class="input" id="tokenInput" placeholder="ghp_… 또는 github_pat_…" autocomplete="current-password">
+      </label>
+    </div>
+
     <label class="row" style="margin:-4px 0 16px;font-size:13px;color:var(--slate);cursor:pointer">
       <input type="checkbox" id="remember" checked style="width:auto;min-height:auto"> 이 브라우저에 저장 (다음부터 자동 로그인)
     </label>
     <button class="btn primary block" id="loginBtn">로그인</button>
 
-    <div class="login-help">
+    <div class="login-help" id="tokenHelp" hidden>
       <b>토큰이 없으신가요?</b>
       <ol>
         <li>GitHub 로그인 → 우측 상단 프로필 → <b>Settings</b></li>
@@ -248,7 +264,7 @@
 
 <input type="file" id="filePicker" accept="image/*" hidden>
 
-<script src="js/github.js"></script>
+<script src="js/backend.js"></script>
 <script src="js/site.js"></script>
 <script src="js/app.js"></script>
 </body>
