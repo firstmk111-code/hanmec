@@ -25,11 +25,12 @@
     imgChanges: {},   // 원본경로 → { newPath, base64, previewUrl, fileName }
     blockCache: {},   // pageKey('__shell__' 포함) → 블록 배열
     changed: {        // 패널별 변경 표시
-      images: 0, text: 0, perf: 0, board: 0, info: 0, seo: 0
+      images: 0, text: 0, perf: 0, detail: 0, board: 0, info: 0, seo: 0
     },
     curImgTab: 'about',
     curPerfTab: null,
-    curPage: null
+    curPage: null,
+    curDetail: null
   };
 
   /* ===================== 유틸 ===================== */
@@ -200,7 +201,7 @@
       S.doc = new SiteDoc(html);
       S.blockCache = {};
       S.imgChanges = {};
-      S.changed = { images: 0, text: 0, perf: 0, board: 0, info: 0, seo: 0 };
+      S.changed = { images: 0, text: 0, perf: 0, detail: 0, board: 0, info: 0, seo: 0 };
       buildAll();
       updateChangeUI();
     });
@@ -221,6 +222,7 @@
     buildImages();
     buildText();
     buildPerf();
+    buildDetail();
     buildBoard();
     buildInfo();
     buildSeo();
@@ -233,14 +235,14 @@
   }
 
   function updateChangeUI() {
-    var n = S.changed.images + S.changed.text + S.changed.perf + S.changed.board + S.changed.info + S.changed.seo;
+    var n = S.changed.images + S.changed.text + S.changed.perf + S.changed.detail + S.changed.board + S.changed.info + S.changed.seo;
     var lb = $('#chgLabel');
     if (n) { lb.textContent = '변경사항 ' + n + '건'; lb.className = 'chg'; }
     else { lb.textContent = '변경사항 없음'; lb.className = 'chg none'; }
     $('#publishBtn').disabled = !n;
     $('#discardBtn').disabled = !n;
 
-    var map = { nImg: 'images', nTxt: 'text', nPerf: 'perf', nBoard: 'board', nInfo: 'info', nSeo: 'seo' };
+    var map = { nImg: 'images', nTxt: 'text', nPerf: 'perf', nDetail: 'detail', nBoard: 'board', nInfo: 'info', nSeo: 'seo' };
     Object.keys(map).forEach(function (id) {
       var e = document.getElementById(id);
       var v = S.changed[map[id]];
@@ -716,6 +718,406 @@
     buildPerf();
   });
 
+  /* ===================== 제품상세 ===================== */
+
+  /* 지금은 제품 상세 페이지가 하나뿐이다. 나중에 늘어나면 여기에 추가하면 된다. */
+  var DETAIL_PAGES = [{ key: 'detail', name: 'LPR (차량번호인식기 + 후면카메라)' }];
+
+  function hasCls(node, name) {
+    return new RegExp('(^|\\s)' + name + '(\\s|$)').test(SiteDoc.attrOf(node, 'class') || '');
+  }
+
+  /** 제품 상세 페이지의 각 부분이 원본 문자열 어디에 있는지 찾아 준다 */
+  function detailModel(key) {
+    var html = S.doc.pageHtml(key);
+    if (!html) return null;
+    var m = { key: key, html: html, subHeads: [] };
+    var root = SiteDoc.parseNodes(html);
+
+    (function walk(n) {
+      n.children.forEach(function (c) {
+        if (c.tag === '#text') return;
+        var id = SiteDoc.attrOf(c, 'id') || '';
+
+        if (hasCls(c, 'phero')) m.phero = c;
+        else if (c.tag === 'h1' && m.phero && c.start > m.phero.start && c.end < m.phero.end && !m.bannerTitle) m.bannerTitle = c;
+        else if (c.tag === 'p' && m.phero && c.start > m.phero.start && c.end < m.phero.end && !m.bannerSub) m.bannerSub = c;
+        else if (hasCls(c, 'dp-title')) m.secTitle = c;
+        else if (hasCls(c, 'pd-cat')) m.cat = c;
+        else if (hasCls(c, 'pd-name')) m.name = c;
+        else if (hasCls(c, 'dp-desc')) m.desc = c;
+        else if (hasCls(c, 'lpr-view-img') || id === 'lpr360img') m.heroImg = c;
+        else if (hasCls(c, 'product-color-swatch')) m.colorImg = c;
+        else if (hasCls(c, 'dp-extra')) m.extraBox = c;
+        else if (hasCls(c, 'dp-extra-img')) m.extraImg = c;
+        else if (hasCls(c, 'sub-h')) m.subHeads.push(c);
+        else if (c.tag === 'table' && hasCls(c, 'feat-tbl')) m.featTable = c;
+        else if (c.tag === 'table' && hasCls(c, 'spec-tbl')) m.specTable = c;
+        else if (hasCls(c, 'product-color-option__content')) m.colorBox = c;
+
+        if (m.colorBox && c.start > m.colorBox.start && c.end <= m.colorBox.end) {
+          if (c.tag === 'strong' && !m.colorTitle) m.colorTitle = c;
+          if (c.tag === 'p' && !m.colorDesc) m.colorDesc = c;
+        }
+        walk(c);
+      });
+    })(root);
+
+    m.specRows = tableRows(html, m.specTable);
+    m.featRows = tableRows(html, m.featTable);
+    return m;
+  }
+
+  function tbodyOf(table) {
+    if (!table) return null;
+    var tb = table.children.filter(function (c) { return c.tag === 'tbody'; })[0];
+    return tb || table;
+  }
+
+  function tableRows(html, table) {
+    var tb = tbodyOf(table);
+    if (!tb) return [];
+    return tb.children.filter(function (c) { return c.tag === 'tr'; }).map(function (tr) {
+      return tr.children.filter(function (c) { return c.tag === 'td'; })
+        .map(function (td) { return html.slice(td.contentStart, td.contentEnd); });
+    });
+  }
+
+  /* ---------- 저장 도우미 ---------- */
+
+  function dtSetPage(key, html) {
+    S.doc.setPageHtml(key, html);
+    refreshBlocks(key);
+    S.changed.detail = (S.changed.detail || 0) + 1;
+    updateChangeUI();
+  }
+
+  /** 요소 안쪽 내용을 바꾼다 */
+  function dtSetInner(key, node, inner) {
+    var m = detailModel(key);
+    dtSetPage(key, m.html.slice(0, node.contentStart) + inner + m.html.slice(node.contentEnd));
+  }
+
+  /** <img> 의 src 를 바꾼다 (그 자리에 있는 이미지만 바뀐다) */
+  function dtSetImgSrc(key, node, src) {
+    var html = S.doc.pageHtml(key);
+    var open = html.slice(node.start, node.contentStart);
+    var next = open.replace(/(\ssrc\s*=\s*)("[^"]*"|'[^']*'|[^\s>]+)/i, '$1"' + src + '"');
+    if (next === open) next = open.replace(/^<img/i, '<img src="' + src + '"');
+    dtSetPage(key, html.slice(0, node.start) + next + html.slice(node.contentStart));
+  }
+
+  /** 표의 행 전체를 다시 쓴다. cols=4 면 항목/내용/항목/내용, cols=2 면 번호/내용 */
+  function dtWriteRows(key, which, rows) {
+    var m = detailModel(key);
+    var table = which === 'spec' ? m.specTable : m.featTable;
+    var tb = tbodyOf(table);
+    if (!tb) return;
+    var body = rows.map(function (r) {
+      return '<tr>' + r.map(function (v, i) {
+        return '<td class="' + (i % 2 === 0 ? 'k' : 'v') + '">' + v + '</td>';
+      }).join('') + '</tr>';
+    }).join('');
+    dtSetPage(key, m.html.slice(0, tb.contentStart) + body + m.html.slice(tb.contentEnd));
+  }
+
+  /* ---------- 화면 ---------- */
+
+  function buildDetail() {
+    var sel = $('#dtProduct');
+    sel.innerHTML = '';
+    DETAIL_PAGES.forEach(function (p) {
+      if (!S.doc.pages[p.key]) return;
+      sel.appendChild(el('option', { value: p.key, text: p.name }));
+    });
+    if (!sel.options.length) {
+      $('#dtBanner').innerHTML = '<div class="empty">제품 상세 페이지를 찾지 못했습니다.</div>';
+      return;
+    }
+    if (!S.curDetail || !S.doc.pages[S.curDetail]) S.curDetail = sel.options[0].value;
+    sel.value = S.curDetail;
+    renderDetail();
+  }
+
+  function renderDetail() {
+    var key = S.curDetail;
+    var m = detailModel(key);
+    if (!m) return;
+
+    /* 배너 */
+    var banner = $('#dtBanner');
+    banner.innerHTML = '';
+    if (m.bannerTitle) banner.appendChild(dtField(key, '큰 제목', 'bannerTitle'));
+    if (m.bannerSub) banner.appendChild(dtField(key, '한 줄 설명', 'bannerSub'));
+
+    /* 기본정보 */
+    var basic = $('#dtBasic');
+    basic.innerHTML = '';
+    if (m.secTitle) basic.appendChild(dtField(key, '섹션 제목', 'secTitle'));
+    if (m.cat) basic.appendChild(dtField(key, '분류 (작은 라벨)', 'cat'));
+    if (m.name) basic.appendChild(dtField(key, '제품명', 'name'));
+    if (m.desc) basic.appendChild(dtField(key, '제품 설명', 'desc', true));
+
+    dtImageSlot($('#dtHeroImg'), key, 'heroImg', '제품 대표 사진');
+    dtImageSlot($('#dtColorImg'), key, 'colorImg', '색상 견본');
+
+    /* 색상 옵션 문구 */
+    var color = $('#dtColor');
+    color.innerHTML = '';
+    if (m.colorTitle) color.appendChild(dtField(key, '제목', 'colorTitle'));
+    if (m.colorDesc) color.appendChild(dtField(key, '설명', 'colorDesc'));
+    if (!m.colorTitle && !m.colorDesc) color.innerHTML = '<div class="empty">색상 옵션 영역이 없습니다.</div>';
+
+    renderSpecRows();
+    renderFeatRows();
+    renderExtra();
+  }
+
+  /** 글자 입력칸 하나. slot 은 detailModel 이 돌려주는 키 이름(예: 'name') */
+  function dtField(key, label, slot, multi) {
+    var node = detailModel(key)[slot];
+    var cur = S.doc.pageHtml(key).slice(node.contentStart, node.contentEnd);
+    var rich = /<[a-z]/i.test(cur);
+    var input = multi || rich || cur.length > 60
+      ? el('textarea', { class: 'input', rows: Math.min(6, Math.ceil(cur.length / 60) + 1) })
+      : el('input', { type: 'text', class: 'input' });
+    input.value = cur;
+
+    input.addEventListener('change', function () {
+      var target = detailModel(key)[slot];   // 편집할 때마다 위치를 다시 읽는다
+      if (!target) { toast('항목을 찾지 못했습니다. 새로고침해 주세요.', 'err'); return; }
+      if (!input.value.trim()) {
+        toast('내용을 비울 수는 없습니다.', 'err');
+        input.value = cur;
+        return;
+      }
+      dtSetInner(key, target, input.value);
+      cur = input.value;
+      toast('수정되었습니다. 발행하면 홈페이지에 반영됩니다.');
+    });
+
+    return el('label', { class: 'field' }, [
+      el('span', {}, [
+        document.createTextNode(label),
+        rich ? el('span', { class: 'badge warn', style: 'margin-left:6px', text: 'HTML 포함' }) : null
+      ]),
+      input
+    ]);
+  }
+
+  /** 이미지 한 칸 (미리보기 + 변경) */
+  function dtImageSlot(host, key, slot, label) {
+    host.innerHTML = '';
+    var node = detailModel(key)[slot];
+    if (!node) { host.innerHTML = '<div class="empty" style="padding:20px">이미지 없음</div>'; return; }
+    var src = SiteDoc.attrOf(node, 'src') || '';
+    var pending = S.imgChanges['__new__' + src];
+
+    host.appendChild(el('div', { class: 'dt-thumb' }, [
+      el('img', { src: pending ? pending.previewUrl : assetUrl(src), alt: '', loading: 'lazy' })
+    ]));
+    host.appendChild(el('div', { class: 'dt-cap', text: label }));
+    host.appendChild(el('div', { class: 'dt-fn', text: src.split('/').pop() }));
+    host.appendChild(el('button', {
+      class: 'btn sm block', style: 'margin-top:8px', text: '사진 변경',
+      onclick: function () { dtPickImage(key, slot, label); }
+    }));
+  }
+
+  function dtPickImage(key, slot, label) {
+    var input = $('#filePicker');
+    input.value = '';
+    input.onchange = function () {
+      var f = input.files[0];
+      if (!f) return;
+      busy(true, '이미지 준비 중…');
+      processImage(f).then(function (r) {
+        busy(false);
+        var newPath = CONFIG.uploadDir + 'prod-' + stampNow() + '.' + r.ext;
+        S.imgChanges['__new__' + newPath] = {
+          newPath: newPath, base64: r.base64, previewUrl: r.dataUrl, fileName: r.name, isNew: true
+        };
+        S.changed.images++;
+        var target = detailModel(key)[slot];
+        if (!target) { toast('이미지 자리를 찾지 못했습니다.', 'err'); return; }
+        dtSetImgSrc(key, target, newPath);
+        renderDetail();
+        toast(label + ' 사진이 바뀌었습니다.', 'ok');
+      }).catch(function (e) { busy(false); toast(e.message, 'err'); });
+    };
+    input.click();
+  }
+
+  /* ---------- 제품사양 표 ---------- */
+
+  function renderSpecRows() {
+    var key = S.curDetail;
+    var rows = detailModel(key).specRows;
+    var host = $('#dtSpecRows');
+    host.innerHTML = '';
+    $('#dtSpecCount').textContent = rows.length + '행';
+
+    if (!rows.length) {
+      host.innerHTML = '<tr><td colspan="6" class="empty">행이 없습니다. “행 추가”를 눌러 등록하세요.</td></tr>';
+      return;
+    }
+
+    rows.forEach(function (r, i) {
+      function cell(ci, ph) {
+        var e = el('input', { class: 'input', value: r[ci] || '', placeholder: ph });
+        e.addEventListener('change', function () {
+          var cur = detailModel(key).specRows;
+          while (cur[i].length < 4) cur[i].push('');
+          cur[i][ci] = e.value;
+          dtWriteRows(key, 'spec', cur);
+        });
+        return e;
+      }
+      host.appendChild(el('tr', {}, [
+        el('td', { class: 'rn', text: String(i + 1) }),
+        el('td', {}, [cell(0, '사용전원')]),
+        el('td', {}, [cell(1, 'AC220V')]),
+        el('td', {}, [cell(2, '조명사양')]),
+        el('td', {}, [cell(3, 'IR LED')]),
+        el('td', {}, [dtRowTools(key, 'spec', i, rows.length)])
+      ]));
+    });
+  }
+
+  /* ---------- 특징 / 기능 표 ---------- */
+
+  function renderFeatRows() {
+    var key = S.curDetail;
+    var rows = detailModel(key).featRows;
+    var host = $('#dtFeatRows');
+    host.innerHTML = '';
+    $('#dtFeatCount').textContent = rows.length + '행';
+
+    if (!rows.length) {
+      host.innerHTML = '<tr><td colspan="4" class="empty">행이 없습니다. “행 추가”를 눌러 등록하세요.</td></tr>';
+      return;
+    }
+
+    rows.forEach(function (r, i) {
+      function cell(ci, ph) {
+        var e = el('input', { class: 'input', value: r[ci] || '', placeholder: ph });
+        e.addEventListener('change', function () {
+          var cur = detailModel(key).featRows;
+          while (cur[i].length < 2) cur[i].push('');
+          cur[i][ci] = e.value;
+          dtWriteRows(key, 'feat', cur);
+        });
+        return e;
+      }
+      host.appendChild(el('tr', {}, [
+        el('td', { class: 'rn', text: String(i + 1) }),
+        el('td', {}, [cell(0, '01')]),
+        el('td', {}, [cell(1, '기능 설명')]),
+        el('td', {}, [dtRowTools(key, 'feat', i, rows.length)])
+      ]));
+    });
+  }
+
+  /** 위/아래/삭제 버튼 */
+  function dtRowTools(key, which, idx, total) {
+    var reRender = which === 'spec' ? renderSpecRows : renderFeatRows;
+    function rowsNow() { return which === 'spec' ? detailModel(key).specRows : detailModel(key).featRows; }
+
+    return el('div', { class: 'rowtools' }, [
+      el('button', {
+        class: 'btn sm', title: '위로', text: '▲', disabled: idx === 0 || null,
+        onclick: function () {
+          var rows = rowsNow();
+          var t = rows[idx]; rows[idx] = rows[idx - 1]; rows[idx - 1] = t;
+          dtWriteRows(key, which, rows); reRender();
+        }
+      }),
+      el('button', {
+        class: 'btn sm', title: '아래로', text: '▼', disabled: idx >= total - 1 || null,
+        onclick: function () {
+          var rows = rowsNow();
+          var t = rows[idx]; rows[idx] = rows[idx + 1]; rows[idx + 1] = t;
+          dtWriteRows(key, which, rows); reRender();
+        }
+      }),
+      el('button', {
+        class: 'btn sm danger', title: '삭제', text: '×',
+        onclick: function () {
+          if (!window.confirm((idx + 1) + '번 행을 삭제할까요?')) return;
+          var rows = rowsNow();
+          rows.splice(idx, 1);
+          dtWriteRows(key, which, rows); reRender();
+        }
+      })
+    ]);
+  }
+
+  /* ---------- 사양표 아래 이미지 ---------- */
+
+  function renderExtra() {
+    var key = S.curDetail;
+    var m = detailModel(key);
+    var host = $('#dtExtra');
+    host.innerHTML = '';
+
+    if (m.extraImg) {
+      var src = SiteDoc.attrOf(m.extraImg, 'src') || '';
+      var pending = S.imgChanges['__new__' + src];
+      host.appendChild(el('div', { class: 'row', style: 'align-items:flex-start;gap:16px' }, [
+        el('div', { class: 'dt-img', style: 'width:260px;flex:none' }, [
+          el('div', { class: 'dt-thumb', style: 'height:150px' }, [el('img', { src: pending ? pending.previewUrl : assetUrl(src), alt: '' })]),
+          el('div', { class: 'dt-fn', text: src.split('/').pop() })
+        ]),
+        el('div', {}, [
+          el('button', { class: 'btn', text: '이미지 변경', onclick: function () { dtPickImage(key, 'extraImg', '사양표 아래'); } }),
+          el('button', {
+            class: 'btn danger', style: 'margin-left:8px', text: '이미지 삭제',
+            onclick: function () {
+              if (!window.confirm('사양표 아래 이미지를 없앨까요?')) return;
+              var f = detailModel(key);
+              dtSetPage(key, f.html.slice(0, f.extraBox.start) + f.html.slice(f.extraBox.end));
+              renderExtra();
+              toast('삭제되었습니다.');
+            }
+          })
+        ])
+      ]));
+    } else {
+      host.appendChild(el('div', {}, [
+        el('p', { class: 'hint', style: 'margin-bottom:10px', text: '아직 등록된 이미지가 없습니다. 등록하면 홈페이지 사양표 바로 아래에 표시됩니다.' }),
+        el('button', { class: 'btn primary', text: '+ 이미지 등록', onclick: function () { dtAddExtra(key); } })
+      ]));
+    }
+  }
+
+  function dtAddExtra(key) {
+    var input = $('#filePicker');
+    input.value = '';
+    input.onchange = function () {
+      var f = input.files[0];
+      if (!f) return;
+      busy(true, '이미지 준비 중…');
+      processImage(f).then(function (r) {
+        busy(false);
+        var newPath = CONFIG.uploadDir + 'spec-' + stampNow() + '.' + r.ext;
+        S.imgChanges['__new__' + newPath] = {
+          newPath: newPath, base64: r.base64, previewUrl: r.dataUrl, fileName: r.name, isNew: true
+        };
+        S.changed.images++;
+
+        var m = detailModel(key);
+        if (!m.specTable) { toast('사양표를 찾지 못했습니다.', 'err'); return; }
+        var block = '<div class="dp-extra reveal d1" style="margin-top:18px">' +
+          '<img class="dp-extra-img" src="' + newPath + '" alt="제품 사양 이미지" loading="lazy" ' +
+          'style="width:100%;height:auto;border-radius:12px;border:1px solid #e7edf5"></div>';
+        dtSetPage(key, m.html.slice(0, m.specTable.end) + block + m.html.slice(m.specTable.end));
+        renderExtra();
+        toast('등록되었습니다. 발행하면 홈페이지에 반영됩니다.', 'ok');
+      }).catch(function (e) { busy(false); toast(e.message, 'err'); });
+    };
+    input.click();
+  }
+
   /* ===================== 공지사항 · 자료실 ===================== */
 
   var TD_C = 'padding:17px 10px;text-align:center;color:#33405a';
@@ -1064,6 +1466,7 @@
     if (S.changed.images) parts.push('이미지 ' + S.changed.images + '건');
     if (S.changed.text) parts.push('문구 ' + S.changed.text + '건');
     if (S.changed.perf) parts.push('주요실적 ' + S.changed.perf + '건');
+    if (S.changed.detail) parts.push('제품상세 ' + S.changed.detail + '건');
     if (S.changed.board) parts.push('게시물 ' + S.changed.board + '건');
     if (S.changed.info) parts.push('회사정보 ' + S.changed.info + '건');
     if (S.changed.seo) parts.push('SEO 설정');
@@ -1113,7 +1516,7 @@
 
   var TITLES = {
     dash: '대시보드', images: '이미지 관리', text: '텍스트 관리', perf: '주요실적 관리',
-    board: '공지사항 · 자료실', info: '회사정보 · 푸터', seo: 'SEO 설정', history: '발행 이력',
+    detail: '제품상세', board: '공지사항 · 자료실', info: '회사정보 · 푸터', seo: 'SEO 설정', history: '발행 이력',
     account: '비밀번호 변경'
   };
 
@@ -1140,6 +1543,30 @@
     $('#txtPage').addEventListener('change', function () { S.curPage = this.value; renderText(); });
     $('#txtShowNav').addEventListener('change', renderText);
     $('#txtSearch').addEventListener('input', renderText);
+
+    $('#dtProduct').addEventListener('change', function () { S.curDetail = this.value; renderDetail(); });
+    $('#dtSpecAdd').addEventListener('click', function () {
+      var rows = detailModel(S.curDetail).specRows;
+      rows.push(['', '', '', '']);
+      dtWriteRows(S.curDetail, 'spec', rows);
+      renderSpecRows();
+    });
+    $('#dtFeatAdd').addEventListener('click', function () {
+      var rows = detailModel(S.curDetail).featRows;
+      var next = rows.length + 1;
+      rows.push([(next < 10 ? '0' : '') + next, '']);
+      dtWriteRows(S.curDetail, 'feat', rows);
+      renderFeatRows();
+    });
+    $('#dtFeatRenum').addEventListener('click', function () {
+      var rows = detailModel(S.curDetail).featRows.map(function (r, i) {
+        var n = i + 1;
+        return [(n < 10 ? '0' : '') + n, r[1] || ''];
+      });
+      dtWriteRows(S.curDetail, 'feat', rows);
+      renderFeatRows();
+      toast('번호를 01부터 다시 매겼습니다.');
+    });
 
     $('#publishBtn').addEventListener('click', publish);
     $('#discardBtn').addEventListener('click', function () {
