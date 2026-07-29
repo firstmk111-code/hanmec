@@ -46,6 +46,7 @@
   function ServerBackend(cfg) {
     this.mode = 'server';
     this.user = cfg.user || 'admin';
+    this.canChangePassword = !!cfg.canChangePassword;
   }
 
   ServerBackend.prototype._req = function (path, options) {
@@ -75,6 +76,9 @@
   };
   ServerBackend.prototype.logout = function () {
     return this._req('logout', { method: 'POST' }).catch(function () {});
+  };
+  ServerBackend.prototype.changePassword = function (current, next) {
+    return this._req('password', { method: 'POST', body: { current: current, next: next } });
   };
   ServerBackend.prototype.headSha = function () {
     return this._req('head').then(function (r) { return r.sha; });

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
 <title>한맥아이피에스 홈페이지 관리자</title>
+<link rel="icon" href="logo.png" type="image/png">
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <link rel="stylesheet" href="admin.css">
 </head>
@@ -13,7 +14,8 @@
 <!-- ===================== 로그인 ===================== -->
 <div id="login">
   <div class="login-box">
-    <h1>한맥아이피에스 홈페이지 관리자</h1>
+    <div class="login-logo"><img src="logo.png" alt="HanMec IPS"></div>
+    <h1>홈페이지 관리자</h1>
     <p class="sub">홈페이지 내용을 직접 수정하고 발행합니다.</p>
 
     <div class="login-err" id="loginErr" hidden></div>
@@ -61,10 +63,8 @@
 
   <aside id="side">
     <div class="brand">
-      <div>
-        <b>한맥아이피에스</b>
-        <small>홈페이지 관리자</small>
-      </div>
+      <span class="brand-logo"><img src="logo.png" alt="HanMec IPS"></span>
+      <span class="brand-txt">홈페이지 관리자</span>
     </div>
     <nav class="menu" id="menu">
       <div class="grp">현황</div>
@@ -78,6 +78,7 @@
       <a data-nav="info"><span class="ic">☏</span> 회사정보 · 푸터 <em class="n" id="nInfo" hidden></em></a>
       <a data-nav="seo"><span class="ic">◎</span> SEO 설정 <em class="n" id="nSeo" hidden></em></a>
       <a data-nav="history"><span class="ic">↺</span> 발행 이력</a>
+      <a data-nav="account" id="navAccount" hidden><span class="ic">⚿</span> 비밀번호 변경</a>
     </nav>
     <div class="side-foot">
       <a href="https://firstmk111-code.github.io/hanmec/" target="_blank" rel="noopener">홈페이지 새 창으로 보기 ↗</a><br>
@@ -252,6 +253,32 @@
           <a class="btn" id="histRepo" target="_blank" rel="noopener">GitHub에서 전체 보기 ↗</a>
         </div>
         <div id="histList"><div class="empty">불러오는 중…</div></div>
+      </div>
+    </section>
+
+    <!-- ---------- 비밀번호 변경 ---------- -->
+    <section class="panel" data-panel="account">
+      <div class="card" style="max-width:520px">
+        <h3>비밀번호 변경</h3>
+        <p class="desc">관리자 페이지에 로그인할 때 쓰는 비밀번호를 바꿉니다.</p>
+
+        <label class="field"><span>현재 비밀번호</span>
+          <input type="password" class="input" id="pwCur" autocomplete="current-password">
+        </label>
+        <label class="field"><span>새 비밀번호</span>
+          <input type="password" class="input" id="pwNew" autocomplete="new-password">
+          <span class="hint" id="pwHint">4자 이상. 영문·숫자를 섞으면 더 안전합니다.</span>
+        </label>
+        <label class="field"><span>새 비밀번호 확인</span>
+          <input type="password" class="input" id="pwNew2" autocomplete="new-password">
+        </label>
+
+        <button class="btn primary" id="pwSubmit">비밀번호 변경</button>
+
+        <p class="hint" style="margin-top:16px">
+          변경하면 다른 기기에 남아 있던 로그인은 모두 풀립니다.<br>
+          새 비밀번호는 잊지 않도록 따로 적어 두세요.
+        </p>
       </div>
     </section>
 

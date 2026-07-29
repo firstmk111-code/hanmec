@@ -156,6 +156,7 @@
     return loadSite().then(function () {
       $('#login').hidden = true;
       $('#shell').classList.add('on');
+      initAccount();
       busy(false);
     });
   }
@@ -1013,6 +1014,49 @@
     toast('SEO 설정이 적용되었습니다. 발행하면 반영됩니다.', 'ok');
   });
 
+  /* ===================== 비밀번호 변경 ===================== */
+
+  var accountBound = false;
+  function initAccount() {
+    var can = S.be && S.be.mode === 'server' && S.be.canChangePassword;
+    $('#navAccount').hidden = !can;
+    if (!can || accountBound) return;
+    accountBound = true;
+
+    $('#pwSubmit').addEventListener('click', function () {
+      var cur = $('#pwCur').value;
+      var next = $('#pwNew').value;
+      var next2 = $('#pwNew2').value;
+
+      if (!cur) return toast('현재 비밀번호를 입력해 주세요.', 'err');
+      if (next.trim().length < 4) return toast('새 비밀번호는 4자 이상이어야 합니다.', 'err');
+      if (next !== next2) return toast('새 비밀번호가 서로 다릅니다.', 'err');
+      if (next === cur) return toast('현재 비밀번호와 다른 값을 입력해 주세요.', 'err');
+
+      busy(true, '비밀번호를 바꾸는 중…');
+      S.be.changePassword(cur, next).then(function () {
+        busy(false);
+        $('#pwCur').value = $('#pwNew').value = $('#pwNew2').value = '';
+        toast('비밀번호가 변경되었습니다. 다음 로그인부터 새 비밀번호를 사용하세요.', 'ok', 6000);
+      }).catch(function (e) {
+        busy(false);
+        toast(e.message, 'err', 5000);
+      });
+    });
+
+    // 새 비밀번호 강도 안내
+    $('#pwNew').addEventListener('input', function () {
+      var v = this.value;
+      var hint = $('#pwHint');
+      if (!v) { hint.textContent = '4자 이상. 영문·숫자를 섞으면 더 안전합니다.'; hint.style.color = ''; return; }
+      if (v.length < 4) { hint.textContent = '너무 짧습니다 (4자 이상).'; hint.style.color = 'var(--danger)'; return; }
+      var kinds = (/[a-z]/.test(v) ? 1 : 0) + (/[A-Z]/.test(v) ? 1 : 0) + (/[0-9]/.test(v) ? 1 : 0) + (/[^A-Za-z0-9]/.test(v) ? 1 : 0);
+      if (v.length >= 10 && kinds >= 3) { hint.textContent = '안전한 비밀번호입니다.'; hint.style.color = 'var(--ok)'; }
+      else if (v.length >= 8 && kinds >= 2) { hint.textContent = '무난합니다.'; hint.style.color = 'var(--ok)'; }
+      else { hint.textContent = '조금 약합니다. 8자 이상 + 영문·숫자 조합을 권합니다.'; hint.style.color = 'var(--warn)'; }
+    });
+  }
+
   /* ===================== 발행 ===================== */
 
   function changeSummary() {
@@ -1069,7 +1113,8 @@
 
   var TITLES = {
     dash: '대시보드', images: '이미지 관리', text: '텍스트 관리', perf: '주요실적 관리',
-    board: '공지사항 · 자료실', info: '회사정보 · 푸터', seo: 'SEO 설정', history: '발행 이력'
+    board: '공지사항 · 자료실', info: '회사정보 · 푸터', seo: 'SEO 설정', history: '발행 이력',
+    account: '비밀번호 변경'
   };
 
   function go(name) {
