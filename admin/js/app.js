@@ -370,6 +370,7 @@
     if (u.shell) return '헤더·푸터';
     if (u.css) return '배너';
     if (u.perf) return '실적 · ' + u.perf;
+    if (u.product) return '제품 · ' + u.name;
     return u.pageName || u.page;
   }
   function uniq(a) { return a.filter(function (v, i) { return a.indexOf(v) === i; }); }
@@ -718,213 +719,367 @@
     buildPerf();
   });
 
-  /* ===================== 제품상세 ===================== */
+  /* ===================== 제품 관리 ===================== */
 
-  /* 지금은 제품 상세 페이지가 하나뿐이다. 나중에 늘어나면 여기에 추가하면 된다. */
-  var DETAIL_PAGES = [{ key: 'detail', name: 'LPR (차량번호인식기 + 후면카메라)' }];
+  /* 제품은 window.PRODUCTS 배열 하나로 관리한다.
+     이 배열이 제품목록 화면과 제품상세 화면을 함께 만든다. */
 
-  function hasCls(node, name) {
-    return new RegExp('(^|\\s)' + name + '(\\s|$)').test(SiteDoc.attrOf(node, 'class') || '');
-  }
+  var PROD_FIELDS = ['name', 'model', 'cat', 'tagline', 'desc', 'title', 'subtitle', 'badge'];
 
-  /** 제품 상세 페이지의 각 부분이 원본 문자열 어디에 있는지 찾아 준다 */
-  function detailModel(key) {
-    var html = S.doc.pageHtml(key);
-    if (!html) return null;
-    var m = { key: key, html: html, subHeads: [] };
-    var root = SiteDoc.parseNodes(html);
+  function prodList() { return S.doc.hasProducts() ? S.doc.productsData() : []; }
 
-    (function walk(n) {
-      n.children.forEach(function (c) {
-        if (c.tag === '#text') return;
-        var id = SiteDoc.attrOf(c, 'id') || '';
-
-        if (hasCls(c, 'phero')) m.phero = c;
-        else if (c.tag === 'h1' && m.phero && c.start > m.phero.start && c.end < m.phero.end && !m.bannerTitle) m.bannerTitle = c;
-        else if (c.tag === 'p' && m.phero && c.start > m.phero.start && c.end < m.phero.end && !m.bannerSub) m.bannerSub = c;
-        else if (hasCls(c, 'dp-title')) m.secTitle = c;
-        else if (hasCls(c, 'pd-cat')) m.cat = c;
-        else if (hasCls(c, 'pd-name')) m.name = c;
-        else if (hasCls(c, 'dp-desc')) m.desc = c;
-        else if (hasCls(c, 'lpr-view-img') || id === 'lpr360img') m.heroImg = c;
-        else if (hasCls(c, 'product-color-swatch')) m.colorImg = c;
-        else if (hasCls(c, 'dp-extra')) m.extraBox = c;
-        else if (hasCls(c, 'dp-extra-img')) m.extraImg = c;
-        else if (hasCls(c, 'sub-h')) m.subHeads.push(c);
-        else if (c.tag === 'table' && hasCls(c, 'feat-tbl')) m.featTable = c;
-        else if (c.tag === 'table' && hasCls(c, 'spec-tbl')) m.specTable = c;
-        else if (hasCls(c, 'product-color-option__content')) m.colorBox = c;
-
-        if (m.colorBox && c.start > m.colorBox.start && c.end <= m.colorBox.end) {
-          if (c.tag === 'strong' && !m.colorTitle) m.colorTitle = c;
-          if (c.tag === 'p' && !m.colorDesc) m.colorDesc = c;
-        }
-        walk(c);
-      });
-    })(root);
-
-    m.specRows = tableRows(html, m.specTable);
-    m.featRows = tableRows(html, m.featTable);
-    return m;
-  }
-
-  function tbodyOf(table) {
-    if (!table) return null;
-    var tb = table.children.filter(function (c) { return c.tag === 'tbody'; })[0];
-    return tb || table;
-  }
-
-  function tableRows(html, table) {
-    var tb = tbodyOf(table);
-    if (!tb) return [];
-    return tb.children.filter(function (c) { return c.tag === 'tr'; }).map(function (tr) {
-      return tr.children.filter(function (c) { return c.tag === 'td'; })
-        .map(function (td) { return html.slice(td.contentStart, td.contentEnd); });
-    });
-  }
-
-  /* ---------- 저장 도우미 ---------- */
-
-  function dtSetPage(key, html) {
-    S.doc.setPageHtml(key, html);
-    refreshBlocks(key);
+  function prodMutate(fn) {
+    var arr = JSON.parse(JSON.stringify(prodList()));
+    fn(arr);
+    S.doc.setProductsData(arr);
     S.changed.detail = (S.changed.detail || 0) + 1;
     updateChangeUI();
   }
 
-  /** 요소 안쪽 내용을 바꾼다 */
-  function dtSetInner(key, node, inner) {
-    var m = detailModel(key);
-    dtSetPage(key, m.html.slice(0, node.contentStart) + inner + m.html.slice(node.contentEnd));
+  function prodById(id) {
+    return prodList().filter(function (p) { return p.id === id; })[0] || null;
   }
 
-  /** <img> 의 src 를 바꾼다 (그 자리에 있는 이미지만 바뀐다) */
-  function dtSetImgSrc(key, node, src) {
-    var html = S.doc.pageHtml(key);
-    var open = html.slice(node.start, node.contentStart);
-    var next = open.replace(/(\ssrc\s*=\s*)("[^"]*"|'[^']*'|[^\s>]+)/i, '$1"' + src + '"');
-    if (next === open) next = open.replace(/^<img/i, '<img src="' + src + '"');
-    dtSetPage(key, html.slice(0, node.start) + next + html.slice(node.contentStart));
+  function prodIndex(id) {
+    var arr = prodList();
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return i;
+    return -1;
   }
 
-  /** 표의 행 전체를 다시 쓴다. cols=4 면 항목/내용/항목/내용, cols=2 면 번호/내용 */
-  function dtWriteRows(key, which, rows) {
-    var m = detailModel(key);
-    var table = which === 'spec' ? m.specTable : m.featTable;
-    var tb = tbodyOf(table);
-    if (!tb) return;
-    var body = rows.map(function (r) {
-      return '<tr>' + r.map(function (v, i) {
-        return '<td class="' + (i % 2 === 0 ? 'k' : 'v') + '">' + v + '</td>';
-      }).join('') + '</tr>';
-    }).join('');
-    dtSetPage(key, m.html.slice(0, tb.contentStart) + body + m.html.slice(tb.contentEnd));
+  function newProdId() {
+    var used = {};
+    prodList().forEach(function (p) { used[p.id] = 1; });
+    for (var i = 1; i < 1000; i++) {
+      var id = 'p' + (i < 10 ? '0' : '') + i;
+      if (!used[id]) return id;
+    }
+    return 'p' + stampNow();
   }
 
-  /* ---------- 화면 ---------- */
+  /* ---------- 목록 ---------- */
 
   function buildDetail() {
-    var sel = $('#dtProduct');
-    sel.innerHTML = '';
-    DETAIL_PAGES.forEach(function (p) {
-      if (!S.doc.pages[p.key]) return;
-      sel.appendChild(el('option', { value: p.key, text: p.name }));
-    });
-    if (!sel.options.length) {
-      $('#dtBanner').innerHTML = '<div class="empty">제품 상세 페이지를 찾지 못했습니다.</div>';
+    if (!S.doc.hasProducts()) {
+      $('#dtList').innerHTML = '<div class="empty">제품 데이터를 찾지 못했습니다. 제작사에 문의해 주세요.</div>';
+      $('#dtCatTabs').innerHTML = '';
       return;
     }
-    if (!S.curDetail || !S.doc.pages[S.curDetail]) S.curDetail = sel.options[0].value;
-    sel.value = S.curDetail;
-    renderDetail();
+    if (S.curDetail && !prodById(S.curDetail)) S.curDetail = null;
+    if (S.curDetail) renderProdEdit(); else renderProdList();
   }
 
-  function renderDetail() {
-    var key = S.curDetail;
-    var m = detailModel(key);
-    if (!m) return;
-
-    /* 배너 */
-    var banner = $('#dtBanner');
-    banner.innerHTML = '';
-    if (m.bannerTitle) banner.appendChild(dtField(key, '큰 제목', 'bannerTitle'));
-    if (m.bannerSub) banner.appendChild(dtField(key, '한 줄 설명', 'bannerSub'));
-
-    /* 기본정보 */
-    var basic = $('#dtBasic');
-    basic.innerHTML = '';
-    if (m.secTitle) basic.appendChild(dtField(key, '섹션 제목', 'secTitle'));
-    if (m.cat) basic.appendChild(dtField(key, '분류 (작은 라벨)', 'cat'));
-    if (m.name) basic.appendChild(dtField(key, '제품명', 'name'));
-    if (m.desc) basic.appendChild(dtField(key, '제품 설명', 'desc', true));
-
-    dtImageSlot($('#dtHeroImg'), key, 'heroImg', '제품 대표 사진');
-    dtImageSlot($('#dtColorImg'), key, 'colorImg', '색상 견본');
-
-    /* 색상 옵션 문구 */
-    var color = $('#dtColor');
-    color.innerHTML = '';
-    if (m.colorTitle) color.appendChild(dtField(key, '제목', 'colorTitle'));
-    if (m.colorDesc) color.appendChild(dtField(key, '설명', 'colorDesc'));
-    if (!m.colorTitle && !m.colorDesc) color.innerHTML = '<div class="empty">색상 옵션 영역이 없습니다.</div>';
-
-    renderSpecRows();
-    renderFeatRows();
-    renderExtra();
+  function prodCats() {
+    var seen = [];
+    prodList().forEach(function (p) { if (p.cat && seen.indexOf(p.cat) < 0) seen.push(p.cat); });
+    return seen;
   }
 
-  /** 글자 입력칸 하나. slot 은 detailModel 이 돌려주는 키 이름(예: 'name') */
-  function dtField(key, label, slot, multi) {
-    var node = detailModel(key)[slot];
-    var cur = S.doc.pageHtml(key).slice(node.contentStart, node.contentEnd);
-    var rich = /<[a-z]/i.test(cur);
-    var input = multi || rich || cur.length > 60
-      ? el('textarea', { class: 'input', rows: Math.min(6, Math.ceil(cur.length / 60) + 1) })
-      : el('input', { type: 'text', class: 'input' });
-    input.value = cur;
+  function renderProdList() {
+    $('#dtListView').hidden = false;
+    $('#dtEditView').hidden = true;
+    S.curDetail = null;
 
-    input.addEventListener('change', function () {
-      var target = detailModel(key)[slot];   // 편집할 때마다 위치를 다시 읽는다
-      if (!target) { toast('항목을 찾지 못했습니다. 새로고침해 주세요.', 'err'); return; }
-      if (!input.value.trim()) {
-        toast('내용을 비울 수는 없습니다.', 'err');
-        input.value = cur;
-        return;
-      }
-      dtSetInner(key, target, input.value);
-      cur = input.value;
-      toast('수정되었습니다. 발행하면 홈페이지에 반영됩니다.');
+    var cats = prodCats();
+    var counts = {};
+    prodList().forEach(function (p) { counts[p.cat] = (counts[p.cat] || 0) + 1; });
+
+    var tabs = $('#dtCatTabs');
+    tabs.innerHTML = '';
+    tabs.appendChild(el('button', {
+      class: !S.curProdCat ? 'on' : '',
+      html: '전체<span class="c">' + prodList().length + '</span>',
+      onclick: function () { S.curProdCat = null; renderProdList(); }
+    }));
+    cats.forEach(function (c) {
+      tabs.appendChild(el('button', {
+        class: S.curProdCat === c ? 'on' : '',
+        html: esc(c) + '<span class="c">' + (counts[c] || 0) + '</span>',
+        onclick: function () { S.curProdCat = c; renderProdList(); }
+      }));
     });
 
-    return el('label', { class: 'field' }, [
-      el('span', {}, [
-        document.createTextNode(label),
-        rich ? el('span', { class: 'badge warn', style: 'margin-left:6px', text: 'HTML 포함' }) : null
-      ]),
-      input
+    var q = ($('#dtSearch').value || '').trim().toLowerCase();
+    var list = prodList().filter(function (p) {
+      if (S.curProdCat && p.cat !== S.curProdCat) return false;
+      if (q && (p.name + ' ' + p.tagline + ' ' + (p.model || '')).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+    $('#dtListCount').textContent = list.length + '개';
+
+    var host = $('#dtList');
+    host.innerHTML = '';
+    if (!list.length) { host.innerHTML = '<div class="empty">해당하는 제품이 없습니다.</div>'; return; }
+
+    list.forEach(function (p) {
+      var pending = S.imgChanges['__new__' + p.img];
+      var filled = (p.specs && p.specs.length) || (p.feats && p.feats.length);
+
+      host.appendChild(el('div', { class: 'img-card' }, [
+        el('div', { class: 'thumb', style: 'cursor:pointer', onclick: function () { openProd(p.id); } }, [
+          el('img', { src: pending ? pending.previewUrl : assetUrl(p.img), loading: 'lazy', alt: '' }),
+          filled ? null : el('span', { class: 'flag', style: 'background:var(--slate2)', text: '내용 없음' })
+        ]),
+        el('div', { class: 'img-meta', style: 'cursor:pointer', onclick: function () { openProd(p.id); } }, [
+          el('div', { class: 'lb', text: p.name || '(이름 없음)' }),
+          el('div', { class: 'fn', text: p.model || p.tagline || '' }),
+          el('div', { class: 'use' }, [
+            el('span', { text: p.cat || '분류 없음' }),
+            el('span', { text: '사양 ' + ((p.specs || []).length) }),
+            el('span', { text: '특징 ' + ((p.feats || []).length) })
+          ])
+        ]),
+        el('div', { class: 'img-act' }, [
+          el('button', { class: 'btn sm primary', text: '수정', onclick: function () { openProd(p.id); } }),
+          el('button', { class: 'btn sm', text: '복제', onclick: function () { dupProd(p.id); } }),
+          el('button', { class: 'btn sm danger', text: '삭제', onclick: function () { delProd(p.id); } })
+        ])
+      ]));
+    });
+  }
+
+  function openProd(id) {
+    S.curDetail = id;
+    S.curProdTab = 'basic';
+    renderProdEdit();
+    window.scrollTo(0, 0);
+  }
+
+  function dupProd(id) {
+    var src = prodById(id);
+    if (!src) return;
+    var copy = JSON.parse(JSON.stringify(src));
+    copy.id = newProdId();
+    copy.name = src.name + ' (복사본)';
+    prodMutate(function (arr) { arr.splice(prodIndex(id) + 1, 0, copy); });
+    renderProdList();
+    toast('복제되었습니다. 이름과 내용을 고쳐 주세요.', 'ok');
+  }
+
+  function delProd(id) {
+    var p = prodById(id);
+    if (!p) return;
+    if (!window.confirm('“' + p.name + '” 제품을 목록에서 지울까요?\n제품소개 화면에서도 사라집니다.')) return;
+    prodMutate(function (arr) { arr.splice(prodIndex(id), 1); });
+    if (S.curDetail === id) S.curDetail = null;
+    renderProdList();
+    toast('삭제되었습니다.');
+  }
+
+  function addProd() {
+    var id = newProdId();
+    var cat = S.curProdCat || prodCats()[0] || '';
+    prodMutate(function (arr) {
+      arr.push({ id: id, cat: cat, name: '새 제품', model: '', tagline: '', title: '', subtitle: '', badge: '', img: '', detailImg: '', desc: '', specs: [], feats: [] });
+    });
+    openProd(id);
+    toast('새 제품이 만들어졌습니다. 내용을 채워 주세요.', 'ok');
+  }
+
+  /* ---------- 편집 ---------- */
+
+  function renderProdEdit() {
+    var p = prodById(S.curDetail);
+    if (!p) { renderProdList(); return; }
+
+    $('#dtListView').hidden = true;
+    $('#dtEditView').hidden = false;
+    $('#dtEditName').textContent = p.name || '(이름 없음)';
+    $('#dtEditSub').textContent = [p.model, p.cat].filter(Boolean).join(' · ');
+    $('#dtViewLive').href = CONFIG.site + '#detail/' + p.id;
+    $('#dtSpecN').textContent = (p.specs || []).length;
+    $('#dtFeatN').textContent = (p.feats || []).length;
+
+    // 분류 자동완성
+    var dl = $('#dtCatList');
+    dl.innerHTML = '';
+    prodCats().forEach(function (c) { dl.appendChild(el('option', { value: c })); });
+
+    // 기본정보 입력칸
+    PROD_FIELDS.forEach(function (f) {
+      var input = document.querySelector('[data-panel="detail"] [data-f="' + f + '"]');
+      if (!input) return;
+      input.value = p[f] || '';
+      input.oninput = null;
+      input.onchange = function () {
+        var v = input.value;
+        prodMutate(function (arr) { arr[prodIndex(p.id)][f] = v; });
+        if (f === 'name' || f === 'model' || f === 'cat') {
+          $('#dtEditName').textContent = prodById(p.id).name || '(이름 없음)';
+          $('#dtEditSub').textContent = [prodById(p.id).model, prodById(p.id).cat].filter(Boolean).join(' · ');
+        }
+      };
+    });
+
+    prodTab(S.curProdTab || 'basic');
+    renderSpecRows();
+    renderFeatRows();
+    renderProdImages();
+  }
+
+  function prodTab(t) {
+    S.curProdTab = t;
+    $$('#dtTabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.t === t); });
+    $$('[data-panel="detail"] .dt-tab').forEach(function (c) { c.hidden = c.dataset.t !== t; });
+  }
+
+  /* ---------- 표 ---------- */
+
+  function prodRows(which) {
+    var p = prodById(S.curDetail);
+    if (!p) return [];
+    return (which === 'spec' ? p.specs : p.feats) || [];
+  }
+
+  function writeProdRows(which, rows) {
+    var id = S.curDetail;
+    prodMutate(function (arr) {
+      var p = arr[prodIndex(id)];
+      if (which === 'spec') p.specs = rows; else p.feats = rows;
+    });
+    $('#dtSpecN').textContent = (prodById(id).specs || []).length;
+    $('#dtFeatN').textContent = (prodById(id).feats || []).length;
+  }
+
+  function renderSpecRows() {
+    var rows = prodRows('spec');
+    var host = $('#dtSpecRows');
+    host.innerHTML = '';
+    $('#dtSpecCount').textContent = rows.length + '행';
+    if (!rows.length) {
+      host.innerHTML = '<tr><td colspan="6" class="empty">아직 사양이 없습니다. “행 추가”를 눌러 등록하세요.</td></tr>';
+      return;
+    }
+    rows.forEach(function (r, i) {
+      function cell(ci, ph) {
+        var e = el('input', { class: 'input', value: r[ci] || '', placeholder: ph });
+        e.addEventListener('change', function () {
+          var cur = JSON.parse(JSON.stringify(prodRows('spec')));
+          while (cur[i].length < 4) cur[i].push('');
+          cur[i][ci] = e.value;
+          writeProdRows('spec', cur);
+        });
+        return e;
+      }
+      host.appendChild(el('tr', {}, [
+        el('td', { class: 'rn', text: String(i + 1) }),
+        el('td', {}, [cell(0, '사용전원')]),
+        el('td', {}, [cell(1, 'AC220V')]),
+        el('td', {}, [cell(2, '조명사양')]),
+        el('td', {}, [cell(3, 'IR LED')]),
+        el('td', {}, [prodRowTools('spec', i, rows.length)])
+      ]));
+    });
+  }
+
+  function renderFeatRows() {
+    var rows = prodRows('feat');
+    var host = $('#dtFeatRows');
+    host.innerHTML = '';
+    $('#dtFeatCount').textContent = rows.length + '행';
+    if (!rows.length) {
+      host.innerHTML = '<tr><td colspan="4" class="empty">아직 특징이 없습니다. “행 추가”를 눌러 등록하세요.</td></tr>';
+      return;
+    }
+    rows.forEach(function (r, i) {
+      function cell(ci, ph) {
+        var e = el('input', { class: 'input', value: r[ci] || '', placeholder: ph });
+        e.addEventListener('change', function () {
+          var cur = JSON.parse(JSON.stringify(prodRows('feat')));
+          while (cur[i].length < 2) cur[i].push('');
+          cur[i][ci] = e.value;
+          writeProdRows('feat', cur);
+        });
+        return e;
+      }
+      host.appendChild(el('tr', {}, [
+        el('td', { class: 'rn', text: String(i + 1) }),
+        el('td', {}, [cell(0, '01')]),
+        el('td', {}, [cell(1, '기능 설명')]),
+        el('td', {}, [prodRowTools('feat', i, rows.length)])
+      ]));
+    });
+  }
+
+  function prodRowTools(which, idx, total) {
+    var reRender = which === 'spec' ? renderSpecRows : renderFeatRows;
+    function rows() { return JSON.parse(JSON.stringify(prodRows(which))); }
+    return el('div', { class: 'rowtools' }, [
+      el('button', {
+        class: 'btn sm', title: '위로', text: '▲', disabled: idx === 0 || null,
+        onclick: function () { var r = rows(); var t = r[idx]; r[idx] = r[idx - 1]; r[idx - 1] = t; writeProdRows(which, r); reRender(); }
+      }),
+      el('button', {
+        class: 'btn sm', title: '아래로', text: '▼', disabled: idx >= total - 1 || null,
+        onclick: function () { var r = rows(); var t = r[idx]; r[idx] = r[idx + 1]; r[idx + 1] = t; writeProdRows(which, r); reRender(); }
+      }),
+      el('button', {
+        class: 'btn sm danger', title: '삭제', text: '×',
+        onclick: function () {
+          if (!window.confirm((idx + 1) + '번 행을 삭제할까요?')) return;
+          var r = rows(); r.splice(idx, 1); writeProdRows(which, r); reRender();
+        }
+      })
     ]);
   }
 
-  /** 이미지 한 칸 (미리보기 + 변경) */
-  function dtImageSlot(host, key, slot, label) {
-    host.innerHTML = '';
-    var node = detailModel(key)[slot];
-    if (!node) { host.innerHTML = '<div class="empty" style="padding:20px">이미지 없음</div>'; return; }
-    var src = SiteDoc.attrOf(node, 'src') || '';
-    var pending = S.imgChanges['__new__' + src];
+  /* ---------- 이미지 ---------- */
 
-    host.appendChild(el('div', { class: 'dt-thumb' }, [
-      el('img', { src: pending ? pending.previewUrl : assetUrl(src), alt: '', loading: 'lazy' })
-    ]));
-    host.appendChild(el('div', { class: 'dt-cap', text: label }));
-    host.appendChild(el('div', { class: 'dt-fn', text: src.split('/').pop() }));
-    host.appendChild(el('button', {
-      class: 'btn sm block', style: 'margin-top:8px', text: '사진 변경',
-      onclick: function () { dtPickImage(key, slot, label); }
-    }));
+  var PROD_IMG_SLOTS = [
+    { f: 'img', label: '목록 사진', hint: '제품소개 목록 카드에 나옵니다' },
+    { f: 'detailImg', label: '상세 대표 사진', hint: '비우면 목록 사진을 씁니다' },
+    { f: 'colorImg', label: '색상 견본', hint: '넣으면 색상 안내가 함께 나옵니다' },
+    { f: 'extraImg', label: '사양표 아래 이미지', hint: '도면·구성도 등' }
+  ];
+
+  function renderProdImages() {
+    var p = prodById(S.curDetail);
+    if (!p) return;
+    var host = $('#dtImgSlots');
+    host.innerHTML = '';
+
+    PROD_IMG_SLOTS.forEach(function (slot) {
+      var src = p[slot.f] || '';
+      var pending = src && S.imgChanges['__new__' + src];
+      var box = el('div', { class: 'dt-img' }, [
+        el('div', { class: 'dt-thumb' }, [
+          src ? el('img', { src: pending ? pending.previewUrl : assetUrl(src), alt: '', loading: 'lazy' })
+              : el('span', { style: 'color:var(--slate2);font-size:12.5px', text: '없음' })
+        ]),
+        el('div', { class: 'dt-cap', text: slot.label }),
+        el('div', { class: 'dt-fn', text: src ? src.split('/').pop() : slot.hint }),
+        el('div', { class: 'row', style: 'gap:6px;margin-top:8px;flex-wrap:nowrap' }, [
+          el('button', { class: 'btn sm', style: 'flex:1', text: src ? '변경' : '등록', onclick: function () { pickProdImage(slot.f, slot.label); } }),
+          src ? el('button', {
+            class: 'btn sm danger', text: '×', title: '비우기',
+            onclick: function () {
+              if (slot.f === 'img' && !window.confirm('목록 사진을 비우면 제품 목록에서 빈칸으로 보입니다. 계속할까요?')) return;
+              prodMutate(function (arr) { arr[prodIndex(p.id)][slot.f] = ''; });
+              renderProdImages();
+            }
+          }) : null
+        ])
+      ]);
+      host.appendChild(box);
+    });
+
+    // 색상 안내 문구 (색상 견본이 있을 때만)
+    var ct = $('#dtColorText');
+    ct.innerHTML = '';
+    if (p.colorImg) {
+      ct.appendChild(el('h3', { style: 'font-size:14px;font-weight:800;margin-bottom:10px', text: '색상 안내 문구' }));
+      [['colorTitle', '제목', '색상 변경 가능'], ['colorDesc', '설명', '설치 환경과 요청에 맞춰 제품 색상을 변경할 수 있습니다.']]
+        .forEach(function (f) {
+          var input = el('input', { type: 'text', class: 'input', value: p[f[0]] || '', placeholder: f[2] });
+          input.addEventListener('change', function () {
+            prodMutate(function (arr) { arr[prodIndex(p.id)][f[0]] = input.value; });
+          });
+          ct.appendChild(el('label', { class: 'field' }, [el('span', { text: f[1] }), input]));
+        });
+    }
   }
 
-  function dtPickImage(key, slot, label) {
+  function pickProdImage(field, label) {
+    var id = S.curDetail;
     var input = $('#filePicker');
     input.value = '';
     input.onchange = function () {
@@ -938,181 +1093,9 @@
           newPath: newPath, base64: r.base64, previewUrl: r.dataUrl, fileName: r.name, isNew: true
         };
         S.changed.images++;
-        var target = detailModel(key)[slot];
-        if (!target) { toast('이미지 자리를 찾지 못했습니다.', 'err'); return; }
-        dtSetImgSrc(key, target, newPath);
-        renderDetail();
-        toast(label + ' 사진이 바뀌었습니다.', 'ok');
-      }).catch(function (e) { busy(false); toast(e.message, 'err'); });
-    };
-    input.click();
-  }
-
-  /* ---------- 제품사양 표 ---------- */
-
-  function renderSpecRows() {
-    var key = S.curDetail;
-    var rows = detailModel(key).specRows;
-    var host = $('#dtSpecRows');
-    host.innerHTML = '';
-    $('#dtSpecCount').textContent = rows.length + '행';
-
-    if (!rows.length) {
-      host.innerHTML = '<tr><td colspan="6" class="empty">행이 없습니다. “행 추가”를 눌러 등록하세요.</td></tr>';
-      return;
-    }
-
-    rows.forEach(function (r, i) {
-      function cell(ci, ph) {
-        var e = el('input', { class: 'input', value: r[ci] || '', placeholder: ph });
-        e.addEventListener('change', function () {
-          var cur = detailModel(key).specRows;
-          while (cur[i].length < 4) cur[i].push('');
-          cur[i][ci] = e.value;
-          dtWriteRows(key, 'spec', cur);
-        });
-        return e;
-      }
-      host.appendChild(el('tr', {}, [
-        el('td', { class: 'rn', text: String(i + 1) }),
-        el('td', {}, [cell(0, '사용전원')]),
-        el('td', {}, [cell(1, 'AC220V')]),
-        el('td', {}, [cell(2, '조명사양')]),
-        el('td', {}, [cell(3, 'IR LED')]),
-        el('td', {}, [dtRowTools(key, 'spec', i, rows.length)])
-      ]));
-    });
-  }
-
-  /* ---------- 특징 / 기능 표 ---------- */
-
-  function renderFeatRows() {
-    var key = S.curDetail;
-    var rows = detailModel(key).featRows;
-    var host = $('#dtFeatRows');
-    host.innerHTML = '';
-    $('#dtFeatCount').textContent = rows.length + '행';
-
-    if (!rows.length) {
-      host.innerHTML = '<tr><td colspan="4" class="empty">행이 없습니다. “행 추가”를 눌러 등록하세요.</td></tr>';
-      return;
-    }
-
-    rows.forEach(function (r, i) {
-      function cell(ci, ph) {
-        var e = el('input', { class: 'input', value: r[ci] || '', placeholder: ph });
-        e.addEventListener('change', function () {
-          var cur = detailModel(key).featRows;
-          while (cur[i].length < 2) cur[i].push('');
-          cur[i][ci] = e.value;
-          dtWriteRows(key, 'feat', cur);
-        });
-        return e;
-      }
-      host.appendChild(el('tr', {}, [
-        el('td', { class: 'rn', text: String(i + 1) }),
-        el('td', {}, [cell(0, '01')]),
-        el('td', {}, [cell(1, '기능 설명')]),
-        el('td', {}, [dtRowTools(key, 'feat', i, rows.length)])
-      ]));
-    });
-  }
-
-  /** 위/아래/삭제 버튼 */
-  function dtRowTools(key, which, idx, total) {
-    var reRender = which === 'spec' ? renderSpecRows : renderFeatRows;
-    function rowsNow() { return which === 'spec' ? detailModel(key).specRows : detailModel(key).featRows; }
-
-    return el('div', { class: 'rowtools' }, [
-      el('button', {
-        class: 'btn sm', title: '위로', text: '▲', disabled: idx === 0 || null,
-        onclick: function () {
-          var rows = rowsNow();
-          var t = rows[idx]; rows[idx] = rows[idx - 1]; rows[idx - 1] = t;
-          dtWriteRows(key, which, rows); reRender();
-        }
-      }),
-      el('button', {
-        class: 'btn sm', title: '아래로', text: '▼', disabled: idx >= total - 1 || null,
-        onclick: function () {
-          var rows = rowsNow();
-          var t = rows[idx]; rows[idx] = rows[idx + 1]; rows[idx + 1] = t;
-          dtWriteRows(key, which, rows); reRender();
-        }
-      }),
-      el('button', {
-        class: 'btn sm danger', title: '삭제', text: '×',
-        onclick: function () {
-          if (!window.confirm((idx + 1) + '번 행을 삭제할까요?')) return;
-          var rows = rowsNow();
-          rows.splice(idx, 1);
-          dtWriteRows(key, which, rows); reRender();
-        }
-      })
-    ]);
-  }
-
-  /* ---------- 사양표 아래 이미지 ---------- */
-
-  function renderExtra() {
-    var key = S.curDetail;
-    var m = detailModel(key);
-    var host = $('#dtExtra');
-    host.innerHTML = '';
-
-    if (m.extraImg) {
-      var src = SiteDoc.attrOf(m.extraImg, 'src') || '';
-      var pending = S.imgChanges['__new__' + src];
-      host.appendChild(el('div', { class: 'row', style: 'align-items:flex-start;gap:16px' }, [
-        el('div', { class: 'dt-img', style: 'width:260px;flex:none' }, [
-          el('div', { class: 'dt-thumb', style: 'height:150px' }, [el('img', { src: pending ? pending.previewUrl : assetUrl(src), alt: '' })]),
-          el('div', { class: 'dt-fn', text: src.split('/').pop() })
-        ]),
-        el('div', {}, [
-          el('button', { class: 'btn', text: '이미지 변경', onclick: function () { dtPickImage(key, 'extraImg', '사양표 아래'); } }),
-          el('button', {
-            class: 'btn danger', style: 'margin-left:8px', text: '이미지 삭제',
-            onclick: function () {
-              if (!window.confirm('사양표 아래 이미지를 없앨까요?')) return;
-              var f = detailModel(key);
-              dtSetPage(key, f.html.slice(0, f.extraBox.start) + f.html.slice(f.extraBox.end));
-              renderExtra();
-              toast('삭제되었습니다.');
-            }
-          })
-        ])
-      ]));
-    } else {
-      host.appendChild(el('div', {}, [
-        el('p', { class: 'hint', style: 'margin-bottom:10px', text: '아직 등록된 이미지가 없습니다. 등록하면 홈페이지 사양표 바로 아래에 표시됩니다.' }),
-        el('button', { class: 'btn primary', text: '+ 이미지 등록', onclick: function () { dtAddExtra(key); } })
-      ]));
-    }
-  }
-
-  function dtAddExtra(key) {
-    var input = $('#filePicker');
-    input.value = '';
-    input.onchange = function () {
-      var f = input.files[0];
-      if (!f) return;
-      busy(true, '이미지 준비 중…');
-      processImage(f).then(function (r) {
-        busy(false);
-        var newPath = CONFIG.uploadDir + 'spec-' + stampNow() + '.' + r.ext;
-        S.imgChanges['__new__' + newPath] = {
-          newPath: newPath, base64: r.base64, previewUrl: r.dataUrl, fileName: r.name, isNew: true
-        };
-        S.changed.images++;
-
-        var m = detailModel(key);
-        if (!m.specTable) { toast('사양표를 찾지 못했습니다.', 'err'); return; }
-        var block = '<div class="dp-extra reveal d1" style="margin-top:18px">' +
-          '<img class="dp-extra-img" src="' + newPath + '" alt="제품 사양 이미지" loading="lazy" ' +
-          'style="width:100%;height:auto;border-radius:12px;border:1px solid #e7edf5"></div>';
-        dtSetPage(key, m.html.slice(0, m.specTable.end) + block + m.html.slice(m.specTable.end));
-        renderExtra();
-        toast('등록되었습니다. 발행하면 홈페이지에 반영됩니다.', 'ok');
+        prodMutate(function (arr) { arr[prodIndex(id)][field] = newPath; });
+        renderProdImages();
+        toast(label + ' 이미지가 등록되었습니다.', 'ok');
       }).catch(function (e) { busy(false); toast(e.message, 'err'); });
     };
     input.click();
@@ -1544,26 +1527,33 @@
     $('#txtShowNav').addEventListener('change', renderText);
     $('#txtSearch').addEventListener('input', renderText);
 
-    $('#dtProduct').addEventListener('change', function () { S.curDetail = this.value; renderDetail(); });
+    $('#dtSearch').addEventListener('input', renderProdList);
+    $('#dtAddProduct').addEventListener('click', addProd);
+    $('#dtBack').addEventListener('click', renderProdList);
+    $('#dtDelete').addEventListener('click', function () { delProd(S.curDetail); });
+    $$('#dtTabs button').forEach(function (b) {
+      b.addEventListener('click', function () { prodTab(b.dataset.t); });
+    });
+
     $('#dtSpecAdd').addEventListener('click', function () {
-      var rows = detailModel(S.curDetail).specRows;
+      var rows = JSON.parse(JSON.stringify(prodRows('spec')));
       rows.push(['', '', '', '']);
-      dtWriteRows(S.curDetail, 'spec', rows);
+      writeProdRows('spec', rows);
       renderSpecRows();
     });
     $('#dtFeatAdd').addEventListener('click', function () {
-      var rows = detailModel(S.curDetail).featRows;
+      var rows = JSON.parse(JSON.stringify(prodRows('feat')));
       var next = rows.length + 1;
       rows.push([(next < 10 ? '0' : '') + next, '']);
-      dtWriteRows(S.curDetail, 'feat', rows);
+      writeProdRows('feat', rows);
       renderFeatRows();
     });
     $('#dtFeatRenum').addEventListener('click', function () {
-      var rows = detailModel(S.curDetail).featRows.map(function (r, i) {
+      var rows = prodRows('feat').map(function (r, i) {
         var n = i + 1;
         return [(n < 10 ? '0' : '') + n, r[1] || ''];
       });
-      dtWriteRows(S.curDetail, 'feat', rows);
+      writeProdRows('feat', rows);
       renderFeatRows();
       toast('번호를 01부터 다시 매겼습니다.');
     });

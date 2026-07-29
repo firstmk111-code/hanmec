@@ -173,85 +173,126 @@
       </div>
     </section>
 
-    <!-- ---------- 제품상세 ---------- -->
+    <!-- ---------- 제품 관리 ---------- -->
     <section class="panel" data-panel="detail">
-      <div class="card">
-        <h3>제품상세 페이지</h3>
-        <p class="desc">
-          홈페이지 <b>제품소개 &gt; 제품 상세</b> 화면을 수정합니다.
-          제품 사진·설명과 사양표를 직접 고칠 수 있고, 표는 행을 추가하거나 지울 수 있습니다.
-        </p>
-        <div class="row">
-          <select class="input" id="dtProduct" style="max-width:320px"></select>
-          <a class="btn" href="https://firstmk111-code.github.io/hanmec/#detail" target="_blank" rel="noopener">홈페이지에서 보기 ↗</a>
-        </div>
-      </div>
 
-      <div class="card">
-        <h3>상단 배너</h3>
-        <p class="desc">페이지 맨 위 큰 제목과 한 줄 설명입니다.</p>
-        <div id="dtBanner"></div>
-      </div>
-
-      <div class="card">
-        <h3>제품 기본정보</h3>
-        <p class="desc">제품 사진과 이름·분류·설명입니다.</p>
-        <div class="row" style="align-items:flex-start;gap:20px">
-          <div style="flex:none;width:190px">
-            <div class="dt-img" id="dtHeroImg"></div>
+      <!-- (1) 제품 목록 -->
+      <div id="dtListView">
+        <div class="card">
+          <h3>제품 관리</h3>
+          <p class="desc">
+            홈페이지 <b>제품소개</b>에 나오는 제품들입니다.
+            제품을 눌러 상세 내용을 고치고, 새 제품을 추가하거나 비슷한 제품은 복제해서 쓸 수 있습니다.
+          </p>
+          <div class="tabs" id="dtCatTabs"></div>
+          <div class="img-toolbar">
+            <input type="text" class="input" id="dtSearch" placeholder="제품명으로 검색">
+            <div class="sp" style="flex:1"></div>
+            <span class="badge gray" id="dtListCount"></span>
+            <button class="btn primary" id="dtAddProduct">+ 제품 추가</button>
           </div>
-          <div style="flex:1;min-width:260px" id="dtBasic"></div>
+          <div class="img-grid" id="dtList"></div>
         </div>
       </div>
 
-      <div class="card">
-        <h3>색상 옵션</h3>
-        <p class="desc">색상 견본 이미지와 안내 문구입니다.</p>
-        <div class="row" style="align-items:flex-start;gap:20px">
-          <div style="flex:none;width:190px">
-            <div class="dt-img" id="dtColorImg"></div>
+      <!-- (2) 제품 편집 -->
+      <div id="dtEditView" hidden>
+        <div class="card">
+          <div class="row" style="margin-bottom:0">
+            <button class="btn" id="dtBack">← 제품 목록</button>
+            <div style="flex:1;min-width:180px">
+              <h3 style="margin:0" id="dtEditName">제품</h3>
+              <p class="desc" style="margin:2px 0 0" id="dtEditSub"></p>
+            </div>
+            <a class="btn" id="dtViewLive" target="_blank" rel="noopener">홈페이지에서 보기 ↗</a>
+            <button class="btn danger" id="dtDelete">이 제품 삭제</button>
           </div>
-          <div style="flex:1;min-width:260px" id="dtColor"></div>
         </div>
-      </div>
 
-      <div class="card">
-        <h3>제품사양 표</h3>
-        <p class="desc">
-          한 줄에 <b>항목 2개</b>가 들어갑니다. (항목 → 내용 → 항목 → 내용)
-          빈칸으로 두면 홈페이지에서도 빈칸으로 보입니다.
-        </p>
-        <div class="tbl-wrap">
-          <table class="tbl dt-tbl">
-            <thead><tr><th style="width:34px">#</th><th>항목</th><th>내용</th><th>항목</th><th>내용</th><th style="width:112px">순서 / 삭제</th></tr></thead>
-            <tbody id="dtSpecRows"></tbody>
-          </table>
+        <div class="tabs" id="dtTabs">
+          <button data-t="basic" class="on">기본정보</button>
+          <button data-t="spec">제품사양 <span class="c" id="dtSpecN"></span></button>
+          <button data-t="feat">특징 / 기능 <span class="c" id="dtFeatN"></span></button>
+          <button data-t="img">이미지</button>
         </div>
-        <div class="row" style="margin-top:14px">
-          <button class="btn primary" id="dtSpecAdd">+ 행 추가</button>
-          <span class="badge gray" id="dtSpecCount"></span>
-        </div>
-      </div>
 
-      <div class="card">
-        <h3>사양표 아래 이미지</h3>
-        <p class="desc">사양표 아래에 이미지를 한 장 넣을 수 있습니다. (도면·구성도 등)</p>
-        <div id="dtExtra"></div>
-      </div>
+        <!-- 기본정보 -->
+        <div class="card dt-tab" data-t="basic">
+          <h3>기본정보</h3>
+          <p class="desc">제품 목록과 상세 페이지에 함께 쓰이는 내용입니다.</p>
+          <div class="grid2">
+            <label class="field"><span>제품명</span><input type="text" class="input" data-f="name" placeholder="LPR(차량번호인식기)"></label>
+            <label class="field"><span>모델명</span><input type="text" class="input" data-f="model" placeholder="HMC-3000C (선택)"></label>
+          </div>
+          <label class="field"><span>분류</span>
+            <input type="text" class="input" data-f="cat" list="dtCatList" placeholder="주차관제">
+            <datalist id="dtCatList"></datalist>
+            <span class="hint">제품소개 화면의 분류 탭 이름과 같아야 그 탭에 나타납니다.</span>
+          </label>
+          <label class="field"><span>한 줄 소개</span>
+            <input type="text" class="input" data-f="tagline" placeholder="딥러닝 LPR 카메라 / 1ch~4ch">
+            <span class="hint">제품 목록 카드에 작게 표시됩니다.</span>
+          </label>
+          <label class="field"><span>제품 설명</span>
+            <textarea class="input" data-f="desc" rows="4" placeholder="제품에 대한 자세한 설명"></textarea>
+            <span class="hint">줄을 바꾸려면 &lt;br&gt; 을 넣으세요.</span>
+          </label>
 
-      <div class="card">
-        <h3>특징 / 기능 표</h3>
-        <p class="desc">한 줄에 <b>번호와 내용</b>이 들어갑니다.</p>
-        <div class="tbl-wrap">
-          <table class="tbl dt-tbl">
-            <thead><tr><th style="width:34px">#</th><th style="width:90px">번호</th><th>내용</th><th style="width:112px">순서 / 삭제</th></tr></thead>
-            <tbody id="dtFeatRows"></tbody>
-          </table>
+          <details style="margin-top:6px">
+            <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--slate)">상세 페이지에서만 다르게 쓰기 (선택)</summary>
+            <div style="padding-top:12px">
+              <label class="field"><span>상세 페이지 제목</span>
+                <input type="text" class="input" data-f="title" placeholder="비우면 제품명과 동일">
+              </label>
+              <label class="field"><span>상세 배너 문구</span>
+                <input type="text" class="input" data-f="subtitle" placeholder="비우면 한 줄 소개와 동일">
+              </label>
+              <label class="field"><span>상세 분류 라벨</span>
+                <input type="text" class="input" data-f="badge" placeholder="비우면 분류와 동일">
+              </label>
+            </div>
+          </details>
         </div>
-        <div class="row" style="margin-top:14px">
-          <button class="btn primary" id="dtFeatAdd">+ 행 추가</button>
-          <button class="btn" id="dtFeatRenum">번호 다시 매기기</button>
-          <span class="badge gray" id="dtFeatCount"></span>
+
+        <!-- 제품사양 -->
+        <div class="card dt-tab" data-t="spec" hidden>
+          <h3>제품사양 표</h3>
+          <p class="desc">한 줄에 <b>항목 2개</b>가 들어갑니다. (항목 → 내용 → 항목 → 내용)</p>
+          <div class="tbl-wrap">
+            <table class="tbl dt-tbl">
+              <thead><tr><th style="width:34px">#</th><th>항목</th><th>내용</th><th>항목</th><th>내용</th><th style="width:112px">순서 / 삭제</th></tr></thead>
+              <tbody id="dtSpecRows"></tbody>
+            </table>
+          </div>
+          <div class="row" style="margin-top:14px">
+            <button class="btn primary" id="dtSpecAdd">+ 행 추가</button>
+            <span class="badge gray" id="dtSpecCount"></span>
+          </div>
+        </div>
+
+        <!-- 특징 -->
+        <div class="card dt-tab" data-t="feat" hidden>
+          <h3>특징 / 기능 표</h3>
+          <p class="desc">한 줄에 <b>번호와 내용</b>이 들어갑니다.</p>
+          <div class="tbl-wrap">
+            <table class="tbl dt-tbl">
+              <thead><tr><th style="width:34px">#</th><th style="width:90px">번호</th><th>내용</th><th style="width:112px">순서 / 삭제</th></tr></thead>
+              <tbody id="dtFeatRows"></tbody>
+            </table>
+          </div>
+          <div class="row" style="margin-top:14px">
+            <button class="btn primary" id="dtFeatAdd">+ 행 추가</button>
+            <button class="btn" id="dtFeatRenum">번호 다시 매기기</button>
+            <span class="badge gray" id="dtFeatCount"></span>
+          </div>
+        </div>
+
+        <!-- 이미지 -->
+        <div class="card dt-tab" data-t="img" hidden>
+          <h3>이미지</h3>
+          <p class="desc">제품 사진과 부가 이미지를 등록합니다.</p>
+          <div class="dt-slots" id="dtImgSlots"></div>
+          <div id="dtColorText" style="margin-top:18px"></div>
         </div>
       </div>
     </section>

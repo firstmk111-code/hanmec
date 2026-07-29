@@ -155,7 +155,9 @@ main{margin-left:250px;padding:calc(var(--topbar) + 24px) 24px 60px}
   color:var(--slate2);cursor:pointer;background:#fafbfd;font-size:12px}
 .thumbs .add:hover{border-color:var(--brand);color:var(--brand)}
 
-/* ---------- 제품상세 ---------- */
+/* ---------- 제품 관리 ---------- */
+.dt-slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px}
+#dtEditView .tabs{margin-bottom:18px}
 .dt-img{text-align:center}
 .dt-thumb{height:170px;border:1px solid var(--line);border-radius:10px;background:repeating-linear-gradient(45deg,#eef1f6,#eef1f6 8px,#f6f8fb 8px,#f6f8fb 16px);
   display:flex;align-items:center;justify-content:center;overflow:hidden;padding:8px}

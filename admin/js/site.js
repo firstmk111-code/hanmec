@@ -144,7 +144,9 @@
 
   /* ===================== 2. JS 리터럴 위치 찾기 ===================== */
 
-  function findBalanced(src, openIdx) {
+  function findBalanced(src, openIdx, open, close) {
+    open = open || '{';
+    close = close || '}';
     var depth = 0, inStr = null, esc = false;
     for (var i = openIdx; i < src.length; i++) {
       var c = src[i];
@@ -155,8 +157,8 @@
         continue;
       }
       if (c === '"' || c === "'") { inStr = c; continue; }
-      if (c === '{') depth++;
-      else if (c === '}') { depth--; if (!depth) return i; }
+      if (c === open) depth++;
+      else if (c === close) { depth--; if (!depth) return i; }
     }
     return -1;
   }
@@ -212,6 +214,7 @@
     this.original = html;
     this.pageEdits = {};      // key → 새 HTML
     this.perfEdit = null;     // 새 PERF 객체
+    this.productsEdit = null; // 새 PRODUCTS 배열
     this.shellEdit = null;    // 새 셸 HTML
     this.headEdits = [];      // {start,end,text}
     this.imageRenames = [];   // {from,to}
@@ -275,6 +278,17 @@
       this.perf = {};
     }
 
+    // ---- window.PRODUCTS=[...]  (제품 목록·상세의 원본 데이터)
+    var qi = html.indexOf('window.PRODUCTS=');
+    if (qi >= 0) {
+      var qOpen = html.indexOf('[', qi);
+      var qClose = findBalanced(html, qOpen, '[', ']');
+      this.regions.products = { start: qOpen, end: qClose + 1 };
+      this.products = JSON.parse(html.slice(qOpen, qClose + 1));
+    } else {
+      this.products = null;   // 아직 데이터 방식으로 전환되지 않은 사이트
+    }
+
     // 순서 정렬 (그룹 순서대로 보기 좋게)
     var self = this;
     var rank = {};
@@ -302,6 +316,11 @@
   /* ---------- 주요실적 ---------- */
   SiteDoc.prototype.perfData = function () { return this.perfEdit || this.perf; };
   SiteDoc.prototype.setPerfData = function (obj) { this.perfEdit = obj; };
+
+  /* ---------- 제품 (목록 + 상세 공통 데이터) ---------- */
+  SiteDoc.prototype.hasProducts = function () { return Array.isArray(this.products); };
+  SiteDoc.prototype.productsData = function () { return this.productsEdit || this.products || []; };
+  SiteDoc.prototype.setProductsData = function (arr) { this.productsEdit = arr; };
 
   /* ---------- 이미지 경로 교체 (전체 문서 전역) ---------- */
   SiteDoc.prototype.renameImage = function (from, to) {
@@ -352,7 +371,7 @@
 
   SiteDoc.prototype.hasChanges = function () {
     return Object.keys(this.pageEdits).length > 0 || this.perfEdit !== null ||
-      this.shellEdit !== null || this.headEdit !== undefined ||
+      this.productsEdit != null || this.shellEdit !== null || this.headEdit !== undefined ||
       this.imageRenames.length > 0 || !!this.baseForceDirty;
   };
 
@@ -385,6 +404,11 @@
     // 주요실적
     if (this.perfEdit && this.regions.perf) {
       sp.replace(this.regions.perf.start, this.regions.perf.end, jsObject(this.perfEdit));
+    }
+
+    // 제품
+    if (this.productsEdit && this.regions.products) {
+      sp.replace(this.regions.products.start, this.regions.products.end, jsObject(this.productsEdit));
     }
 
     var out = sp.result();
@@ -449,6 +473,19 @@
         });
       })(root);
     });
+
+    // --- 제품 데이터 (목록 사진 / 상세 사진 / 색상 견본 / 사양 이미지)
+    if (this.hasProducts()) {
+      this.productsData().forEach(function (p) {
+        [['img', '목록 사진'], ['detailImg', '상세 사진'], ['colorImg', '색상 견본'], ['extraImg', '사양 이미지']]
+          .forEach(function (f) {
+            var v = p[f[0]];
+            if (v && /^images\//.test(v)) {
+              add(v, { product: p.id, name: p.name }, p.name + ' — ' + f[1], 'products', 800);
+            }
+          });
+      });
+    }
 
     // --- 주요실적 데이터
     var perf = this.perfData();
