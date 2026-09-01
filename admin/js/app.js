@@ -201,6 +201,7 @@
       S.doc = new SiteDoc(html);
       S.blockCache = {};
       S.imgChanges = {};
+      prodSel = {};              // 제품 선택 상태도 함께 초기화
       S.changed = { images: 0, text: 0, perf: 0, detail: 0, board: 0, info: 0, seo: 0 };
       buildAll();
       updateChangeUI();
@@ -726,6 +727,24 @@
 
   var PROD_FIELDS = ['name', 'model', 'cat', 'tagline', 'desc', 'title', 'subtitle', 'badge'];
 
+  /* 홈페이지 제품소개의 분류 탭과 짝을 맞춘 목록.
+     주의: "노상무인" 은 화면에 보이는 이름이고 실제 저장값은 "노상주차" 이다.
+     (홈페이지 필터가 data-cat="노상주차" 로 걸러내므로 값을 바꾸면 안 된다) */
+  var PROD_CATS = [
+    { value: '주차관제', label: '주차관제' },
+    { value: '주차유도', label: '주차유도' },
+    { value: '노상주차', label: '노상무인' },
+    { value: '배리어프리 키오스크', label: '배리어프리 키오스크' }
+  ];
+
+  function catLabel(v) {
+    for (var i = 0; i < PROD_CATS.length; i++) if (PROD_CATS[i].value === v) return PROD_CATS[i].label;
+    return v || '분류 없음';
+  }
+
+  /* 목록에서 체크한 제품들 (id 집합) */
+  var prodSel = {};
+
   function prodList() { return S.doc.hasProducts() ? S.doc.productsData() : []; }
 
   function prodMutate(fn) {
@@ -765,6 +784,8 @@
       return;
     }
     if (S.curDetail && !prodById(S.curDetail)) S.curDetail = null;
+    // 고르고 있던 분류가 사라졌으면 전체로 되돌린다
+    if (S.curProdCat && prodCats().indexOf(S.curProdCat) < 0) S.curProdCat = null;
     if (S.curDetail) renderProdEdit(); else renderProdList();
   }
 
@@ -793,28 +814,49 @@
     cats.forEach(function (c) {
       tabs.appendChild(el('button', {
         class: S.curProdCat === c ? 'on' : '',
-        html: esc(c) + '<span class="c">' + (counts[c] || 0) + '</span>',
+        html: esc(catLabel(c)) + '<span class="c">' + (counts[c] || 0) + '</span>',
         onclick: function () { S.curProdCat = c; renderProdList(); }
       }));
     });
 
-    var q = ($('#dtSearch').value || '').trim().toLowerCase();
-    var list = prodList().filter(function (p) {
-      if (S.curProdCat && p.cat !== S.curProdCat) return false;
-      if (q && (p.name + ' ' + p.tagline + ' ' + (p.model || '')).toLowerCase().indexOf(q) < 0) return false;
-      return true;
-    });
+    var list = visibleProds();
     $('#dtListCount').textContent = list.length + '개';
+    $('#dtOrderHint').hidden = list.length < 2;
 
     var host = $('#dtList');
     host.innerHTML = '';
-    if (!list.length) { host.innerHTML = '<div class="empty">해당하는 제품이 없습니다.</div>'; return; }
+    if (!list.length) {
+      host.innerHTML = '<div class="empty">해당하는 제품이 없습니다.</div>';
+      syncSelUI();
+      return;
+    }
 
-    list.forEach(function (p) {
+    list.forEach(function (p, vi) {
       var pending = S.imgChanges['__new__' + p.img];
       var filled = (p.specs && p.specs.length) || (p.feats && p.feats.length);
 
-      host.appendChild(el('div', { class: 'img-card' }, [
+      var chk = el('input', { type: 'checkbox', title: '선택' });
+      chk.checked = !!prodSel[p.id];
+      chk.addEventListener('change', function () {
+        if (chk.checked) prodSel[p.id] = 1; else delete prodSel[p.id];
+        card.classList.toggle('picked', chk.checked);
+        syncSelUI();
+      });
+
+      var card = el('div', { class: 'img-card' + (prodSel[p.id] ? ' picked' : ''), 'data-pid': p.id }, [
+        el('div', { class: 'dt-cardbar' }, [
+          el('label', { class: 'dt-chk', title: '선택' }, [chk]),
+          el('div', { class: 'sp', style: 'flex:1' }),
+          el('button', {
+            class: 'btn sm', text: '↑', title: '앞으로', disabled: vi === 0 || null,
+            onclick: function () { moveProdBy(p.id, -1); }
+          }),
+          el('button', {
+            class: 'btn sm', text: '↓', title: '뒤로', disabled: vi >= list.length - 1 || null,
+            onclick: function () { moveProdBy(p.id, 1); }
+          }),
+          el('span', { class: 'dt-handle', title: '끌어서 순서 바꾸기', draggable: 'true', text: '☰' })
+        ]),
         el('div', { class: 'thumb', style: 'cursor:pointer', onclick: function () { openProd(p.id); } }, [
           el('img', { src: pending ? pending.previewUrl : assetUrl(p.img), loading: 'lazy', alt: '' }),
           filled ? null : el('span', { class: 'flag', style: 'background:var(--slate2)', text: '내용 없음' })
@@ -823,7 +865,7 @@
           el('div', { class: 'lb', text: p.name || '(이름 없음)' }),
           el('div', { class: 'fn', text: p.model || p.tagline || '' }),
           el('div', { class: 'use' }, [
-            el('span', { text: p.cat || '분류 없음' }),
+            el('span', { text: catLabel(p.cat) }),
             el('span', { text: '사양 ' + ((p.specs || []).length) }),
             el('span', { text: '특징 ' + ((p.feats || []).length) })
           ])
@@ -833,7 +875,146 @@
           el('button', { class: 'btn sm', text: '복제', onclick: function () { dupProd(p.id); } }),
           el('button', { class: 'btn sm danger', text: '삭제', onclick: function () { delProd(p.id); } })
         ])
-      ]));
+      ]);
+
+      bindProdDrag(card, p.id);
+      host.appendChild(card);
+    });
+
+    syncSelUI();
+  }
+
+  /* 현재 탭·검색이 적용된 뒤 화면에 보이는 제품들 */
+  function visibleProds() {
+    var q = ($('#dtSearch').value || '').trim().toLowerCase();
+    return prodList().filter(function (p) {
+      if (S.curProdCat && p.cat !== S.curProdCat) return false;
+      if (q && (p.name + ' ' + (p.tagline || '') + ' ' + (p.model || '')).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+
+  /* ---------- 선택 / 일괄 삭제 ---------- */
+
+  function selectedIds() {
+    // 화면에 보이는 것 중에서만 (필터를 바꿔도 엉뚱한 게 지워지지 않도록)
+    return visibleProds().map(function (p) { return p.id; }).filter(function (id) { return prodSel[id]; });
+  }
+
+  function syncSelUI() {
+    var vis = visibleProds();
+    var sel = selectedIds();
+    var btn = $('#dtBulkDelete');
+    btn.hidden = sel.length === 0;
+    btn.textContent = '선택 삭제 (' + sel.length + ')';
+
+    var all = $('#dtSelectAll');
+    all.checked = vis.length > 0 && sel.length === vis.length;
+    all.indeterminate = sel.length > 0 && sel.length < vis.length;
+    all.disabled = vis.length === 0;
+  }
+
+  function toggleSelectAll(on) {
+    visibleProds().forEach(function (p) {
+      if (on) prodSel[p.id] = 1; else delete prodSel[p.id];
+    });
+    renderProdList();
+  }
+
+  function bulkDelete() {
+    var ids = selectedIds();
+    if (!ids.length) return;
+    var names = ids.map(function (id) { return (prodById(id) || {}).name || id; });
+
+    var body = el('div', {}, [
+      el('p', { text: '선택한 ' + ids.length + '개의 제품을 삭제하시겠습니까?' }),
+      el('ul', { style: 'margin:10px 0 0 18px;max-height:220px;overflow:auto' },
+        names.map(function (n) { return el('li', { text: n }); })),
+      el('p', { class: 'hint', style: 'margin-top:14px', text: '삭제 후 저장하고 발행하면 홈페이지에서도 삭제됩니다.' })
+    ]);
+
+    confirmBox('선택 제품 삭제', body, '삭제').then(function (ok) {
+      if (!ok) return;
+      prodMutate(function (arr) {
+        for (var i = arr.length - 1; i >= 0; i--) {
+          if (ids.indexOf(arr[i].id) >= 0) arr.splice(i, 1);
+        }
+      });
+      ids.forEach(function (id) { delete prodSel[id]; });
+      if (ids.indexOf(S.curDetail) >= 0) S.curDetail = null;
+      renderProdList();
+      toast(ids.length + '개 제품이 삭제되었습니다. 발행하면 홈페이지에 반영됩니다.', 'ok');
+    });
+  }
+
+  /* ---------- 노출 순서 ---------- */
+
+  /* 화면에 보이는 목록에서 한 칸 옮긴다.
+     실제로는 전체 배열에서 "이웃한 보이는 제품"의 자리로 이동시키므로
+     숨겨진 제품들끼리의 순서는 그대로 유지된다. */
+  function moveProdBy(id, dir) {
+    var vis = visibleProds();
+    var vi = -1;
+    for (var i = 0; i < vis.length; i++) if (vis[i].id === id) vi = i;
+    if (vi < 0) return;
+    var target = vis[vi + dir];
+    if (!target) return;
+    moveProdTo(id, target.id, dir > 0);
+  }
+
+  /* srcId 를 targetId 자리로 옮긴다 */
+  function moveProdTo(srcId, targetId, after) {
+    if (srcId === targetId) return;
+    prodMutate(function (arr) {
+      var from = -1, to = -1;
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i].id === srcId) from = i;
+        if (arr[i].id === targetId) to = i;
+      }
+      if (from < 0 || to < 0) return;
+      var item = arr.splice(from, 1)[0];
+      var idx = -1;
+      for (var j = 0; j < arr.length; j++) if (arr[j].id === targetId) idx = j;
+      arr.splice(after ? idx + 1 : idx, 0, item);
+    });
+    renderProdList();
+  }
+
+  /* 드래그 앤 드롭 (핸들 ☰ 로만 시작) */
+  var dragSrcId = null;
+
+  function bindProdDrag(card, id) {
+    var handle = card.querySelector('.dt-handle');
+
+    handle.addEventListener('dragstart', function (e) {
+      dragSrcId = id;
+      card.classList.add('dragging');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', id); } catch (err) {}
+      }
+    });
+    handle.addEventListener('dragend', function () {
+      dragSrcId = null;
+      $$('#dtList .img-card').forEach(function (c) { c.classList.remove('dragging', 'dragover'); });
+    });
+
+    card.addEventListener('dragover', function (e) {
+      if (!dragSrcId || dragSrcId === id) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      card.classList.add('dragover');
+    });
+    card.addEventListener('dragleave', function () { card.classList.remove('dragover'); });
+    card.addEventListener('drop', function (e) {
+      e.preventDefault();
+      card.classList.remove('dragover');
+      var src = dragSrcId || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+      if (!src || src === id) return;
+      // 원래 위치보다 뒤로 끌었으면 대상 뒤에, 앞으로 끌었으면 대상 앞에
+      var vis = visibleProds().map(function (p) { return p.id; });
+      moveProdTo(src, id, vis.indexOf(src) < vis.indexOf(id));
+      dragSrcId = null;
     });
   }
 
@@ -867,7 +1048,7 @@
 
   function addProd() {
     var id = newProdId();
-    var cat = S.curProdCat || prodCats()[0] || '';
+    var cat = S.curProdCat || PROD_CATS[0].value;
     prodMutate(function (arr) {
       arr.push({ id: id, cat: cat, name: '새 제품', model: '', tagline: '', title: '', subtitle: '', badge: '', img: '', detailImg: '', desc: '', specs: [], feats: [] });
     });
@@ -884,28 +1065,26 @@
     $('#dtListView').hidden = true;
     $('#dtEditView').hidden = false;
     $('#dtEditName').textContent = p.name || '(이름 없음)';
-    $('#dtEditSub').textContent = [p.model, p.cat].filter(Boolean).join(' · ');
+    $('#dtEditSub').textContent = [p.model, catLabel(p.cat)].filter(Boolean).join(' · ');
     $('#dtViewLive').href = CONFIG.site + '#detail/' + p.id;
     $('#dtSpecN').textContent = (p.specs || []).length;
     $('#dtFeatN').textContent = (p.feats || []).length;
 
-    // 분류 자동완성
-    var dl = $('#dtCatList');
-    dl.innerHTML = '';
-    prodCats().forEach(function (c) { dl.appendChild(el('option', { value: c })); });
+    fillCatSelect(p.cat);
 
     // 기본정보 입력칸
     PROD_FIELDS.forEach(function (f) {
       var input = document.querySelector('[data-panel="detail"] [data-f="' + f + '"]');
       if (!input) return;
-      input.value = p[f] || '';
+      if (f !== 'cat') input.value = p[f] || '';   // 분류는 fillCatSelect 가 세팅
       input.oninput = null;
       input.onchange = function () {
         var v = input.value;
         prodMutate(function (arr) { arr[prodIndex(p.id)][f] = v; });
         if (f === 'name' || f === 'model' || f === 'cat') {
-          $('#dtEditName').textContent = prodById(p.id).name || '(이름 없음)';
-          $('#dtEditSub').textContent = [prodById(p.id).model, prodById(p.id).cat].filter(Boolean).join(' · ');
+          var np = prodById(p.id);
+          $('#dtEditName').textContent = np.name || '(이름 없음)';
+          $('#dtEditSub').textContent = [np.model, catLabel(np.cat)].filter(Boolean).join(' · ');
         }
       };
     });
@@ -914,6 +1093,28 @@
     renderSpecRows();
     renderFeatRows();
     renderProdImages();
+  }
+
+  /* 분류 드롭다운.
+     정해진 4개 외의 값이 저장돼 있으면 그 값을 지우지 않고 맨 위에
+     "(현재 값)" 으로 함께 보여준다. 사용자가 정상 분류로 바꿀 때까지 유지된다. */
+  function fillCatSelect(current) {
+    var sel = $('#dtCatSelect');
+    if (!sel) return;
+    sel.innerHTML = '';
+
+    var known = PROD_CATS.some(function (c) { return c.value === current; });
+    if (!known) {
+      sel.appendChild(el('option', {
+        value: current || '',
+        text: current ? '현재 값: ' + current + ' (분류를 골라 주세요)' : '분류를 골라 주세요'
+      }));
+    }
+    PROD_CATS.forEach(function (c) {
+      sel.appendChild(el('option', { value: c.value, text: c.label }));
+    });
+    sel.value = current || '';
+    if (sel.value !== (current || '')) sel.value = PROD_CATS[0].value;
   }
 
   function prodTab(t) {
@@ -1024,11 +1225,11 @@
 
   /* ---------- 이미지 ---------- */
 
+  /* 사양표 아래 이미지(extraImg)는 따로 큰 영역으로 뺐다. renderExtraImg() 참고 */
   var PROD_IMG_SLOTS = [
     { f: 'img', label: '목록 사진', hint: '제품소개 목록 카드에 나옵니다' },
     { f: 'detailImg', label: '상세 대표 사진', hint: '비우면 목록 사진을 씁니다' },
-    { f: 'colorImg', label: '색상 견본', hint: '넣으면 색상 안내가 함께 나옵니다' },
-    { f: 'extraImg', label: '사양표 아래 이미지', hint: '도면·구성도 등' }
+    { f: 'colorImg', label: '색상 견본', hint: '넣으면 색상 안내가 함께 나옵니다' }
   ];
 
   function renderProdImages() {
@@ -1076,9 +1277,47 @@
           ct.appendChild(el('label', { class: 'field' }, [el('span', { text: f[1] }), input]));
         });
     }
+
+    renderExtraImg();
   }
 
-  function pickProdImage(field, label) {
+  /* 제품 상세페이지에서 "제품사양 표 바로 아래" 에 나오는 이미지 */
+  function renderExtraImg() {
+    var p = prodById(S.curDetail);
+    var host = $('#dtExtraImg');
+    if (!p || !host) return;
+    host.innerHTML = '';
+
+    var src = p.extraImg || '';
+    var pending = src && S.imgChanges['__new__' + src];
+
+    host.appendChild(el('div', { class: 'dt-extrabox' }, [
+      el('div', { class: 'dt-extraprev' }, [
+        src ? el('img', { src: pending ? pending.previewUrl : assetUrl(src), alt: '', loading: 'lazy' })
+            : el('span', { class: 'dt-noimg', text: '등록된 이미지가 없습니다' })
+      ]),
+      el('div', { class: 'dt-extrainfo' }, [
+        el('div', { class: 'dt-fn', style: 'margin:0 0 10px', text: src ? src.split('/').pop() : '이미지를 등록하면 사양표 바로 아래에 표시됩니다.' }),
+        el('div', { class: 'row' }, [
+          el('button', {
+            class: 'btn primary', text: src ? '이미지 교체' : '이미지 추가',
+            onclick: function () { pickProdImage('extraImg', '사양표 아래', renderExtraImg); }
+          }),
+          src ? el('button', {
+            class: 'btn danger', text: '이미지 삭제',
+            onclick: function () {
+              if (!window.confirm('사양표 아래 이미지를 삭제할까요?')) return;
+              prodMutate(function (arr) { arr[prodIndex(p.id)].extraImg = ''; });
+              renderExtraImg();
+              toast('삭제되었습니다. 발행하면 홈페이지에 반영됩니다.');
+            }
+          }) : null
+        ])
+      ])
+    ]));
+  }
+
+  function pickProdImage(field, label, after) {
     var id = S.curDetail;
     var input = $('#filePicker');
     input.value = '';
@@ -1094,7 +1333,7 @@
         };
         S.changed.images++;
         prodMutate(function (arr) { arr[prodIndex(id)][field] = newPath; });
-        renderProdImages();
+        if (after) after(); else renderProdImages();
         toast(label + ' 이미지가 등록되었습니다.', 'ok');
       }).catch(function (e) { busy(false); toast(e.message, 'err'); });
     };
@@ -1529,6 +1768,8 @@
 
     $('#dtSearch').addEventListener('input', renderProdList);
     $('#dtAddProduct').addEventListener('click', addProd);
+    $('#dtSelectAll').addEventListener('change', function () { toggleSelectAll(this.checked); });
+    $('#dtBulkDelete').addEventListener('click', bulkDelete);
     $('#dtBack').addEventListener('click', renderProdList);
     $('#dtDelete').addEventListener('click', function () { delProd(S.curDetail); });
     $$('#dtTabs button').forEach(function (b) {

@@ -158,6 +158,30 @@ main{margin-left:250px;padding:calc(var(--topbar) + 24px) 24px 60px}
 /* ---------- 제품 관리 ---------- */
 .dt-slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px}
 #dtEditView .tabs{margin-bottom:18px}
+
+/* 목록 카드 위쪽 줄: 선택 체크박스 / 순서 버튼 / 드래그 핸들 */
+.dt-cardbar{display:flex;align-items:center;gap:4px;padding:7px 8px;border-bottom:1px solid var(--line);background:#fbfcfe}
+.dt-chk{display:flex;align-items:center;cursor:pointer;padding:2px 4px}
+.dt-chk input{width:16px;height:16px;min-height:auto;cursor:pointer;accent-color:var(--brand)}
+.dt-cardbar .btn{padding:0 7px;min-width:26px;height:26px;font-size:12px}
+.dt-handle{cursor:grab;color:var(--slate2);font-size:15px;padding:2px 6px;border-radius:6px;user-select:none;line-height:1}
+.dt-handle:hover{background:#eef3fa;color:var(--brand)}
+.dt-handle:active{cursor:grabbing}
+.img-card.picked{border-color:var(--brand);box-shadow:0 0 0 2px rgba(16,100,167,.18)}
+.img-card.picked .dt-cardbar{background:#eef3fa}
+.img-card.dragging{opacity:.45}
+.img-card.dragover{border-color:var(--brand-l);box-shadow:0 0 0 3px rgba(30,164,222,.28)}
+.dt-selall{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--slate);cursor:pointer;white-space:nowrap}
+.dt-selall input{width:16px;height:16px;min-height:auto;cursor:pointer;accent-color:var(--brand)}
+
+/* 사양표 아래 이미지 */
+.dt-extrabox{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+.dt-extraprev{width:300px;min-height:170px;flex:none;border:1px solid var(--line);border-radius:10px;padding:8px;
+  background:repeating-linear-gradient(45deg,#eef1f6,#eef1f6 8px,#f6f8fb 8px,#f6f8fb 16px);
+  display:flex;align-items:center;justify-content:center;overflow:hidden}
+.dt-extraprev img{max-width:100%;max-height:260px;width:auto;object-fit:contain;border-radius:6px}
+.dt-noimg{color:var(--slate2);font-size:13px}
+.dt-extrainfo{flex:1;min-width:220px}
 .dt-img{text-align:center}
 .dt-thumb{height:170px;border:1px solid var(--line);border-radius:10px;background:repeating-linear-gradient(45deg,#eef1f6,#eef1f6 8px,#f6f8fb 8px,#f6f8fb 16px);
   display:flex;align-items:center;justify-content:center;overflow:hidden;padding:8px}
