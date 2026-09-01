@@ -109,6 +109,7 @@
       $('#shell').classList.add('on');
       busy(false);
       toast('로컬 미리보기 모드 — 발행은 되지 않습니다.', 'warn', 5000);
+      return offerDraft();
     }).catch(function (e) { busy(false); loginError(e.message); });
   }
 
@@ -159,6 +160,7 @@
       $('#shell').classList.add('on');
       initAccount();
       busy(false);
+      return offerDraft();     // 발행 안 하고 남겨둔 작업이 있으면 이어서 할지 물어본다
     });
   }
 
@@ -188,6 +190,132 @@
         if (silent && be.mode === 'token') localStorage.removeItem(LS_TOKEN);
         loginError(err.message);
       });
+  }
+
+  /* ===================== 임시저장 (작업 중 내용 보관) =====================
+     발행 전에 새로고침하거나 창을 닫아도 작업한 내용이 날아가지 않도록
+     브라우저 안(IndexedDB)에 자동으로 보관해 둔다.
+     이미지 파일까지 담기 때문에 용량이 큰 localStorage 대신 IndexedDB 를 쓴다.
+     발행에 성공하거나 사용자가 "변경 취소" 를 누르면 지운다. */
+
+  var DRAFT_DB = 'hanmec-admin', DRAFT_STORE = 'draft', DRAFT_KEY = 'current';
+  var draftTimer = null;
+  /* 첫 로딩이 끝나고 "이어서 작업" 여부를 물어보기 전까지는 임시저장본에 손대지 않는다.
+     (로딩 중에도 변경사항 표시가 갱신되는데, 그때 저장본이 지워지면 안 되기 때문) */
+  var draftReady = false;
+
+  function withStore(mode) {
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) return reject(new Error('no idb'));
+      var req = indexedDB.open(DRAFT_DB, 1);
+      req.onupgradeneeded = function () {
+        if (!req.result.objectStoreNames.contains(DRAFT_STORE)) req.result.createObjectStore(DRAFT_STORE);
+      };
+      req.onsuccess = function () {
+        var db = req.result;
+        try {
+          var tx = db.transaction(DRAFT_STORE, mode);
+          resolve({ store: tx.objectStore(DRAFT_STORE), db: db });
+        } catch (e) { reject(e); }
+      };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  function draftSave() {
+    if (!S.doc || !hasChanges()) return draftClear();
+    var payload = {
+      html: S.doc.serialize(),
+      headSha: S.headSha,
+      changed: S.changed,
+      imgChanges: S.imgChanges,
+      savedAt: new Date().toISOString()
+    };
+    withStore('readwrite').then(function (h) {
+      var r = h.store.put(payload, DRAFT_KEY);
+      r.onsuccess = function () { showDraftMark(payload.savedAt); };
+      r.onerror = function () { /* 용량 초과 등 — 조용히 넘어간다 */ };
+    }).catch(function () {});
+  }
+
+  function draftLoad() {
+    return withStore('readonly').then(function (h) {
+      return new Promise(function (resolve) {
+        var r = h.store.get(DRAFT_KEY);
+        r.onsuccess = function () { resolve(r.result || null); };
+        r.onerror = function () { resolve(null); };
+      });
+    }).catch(function () { return null; });
+  }
+
+  function draftClear() {
+    showDraftMark(null);
+    return withStore('readwrite').then(function (h) { h.store.delete(DRAFT_KEY); }).catch(function () {});
+  }
+
+  function draftTouch() {
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(draftSave, 1200);
+  }
+
+  function showDraftMark(iso) {
+    var e = $('#draftMark');
+    if (!e) return;
+    if (!iso) { e.hidden = true; return; }
+    var d = new Date(iso);
+    e.hidden = false;
+    e.textContent = '임시저장됨 ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  /* 저장해 둔 작업이 있으면 이어서 할지 물어본다 */
+  function offerDraft() {
+    return draftLoad().then(function (dr) {
+      if (!dr || !dr.html) { draftReady = true; return false; }
+
+      var parts = [];
+      var c = dr.changed || {};
+      if (c.images) parts.push('이미지 ' + c.images + '건');
+      if (c.text) parts.push('문구 ' + c.text + '건');
+      if (c.perf) parts.push('주요실적 ' + c.perf + '건');
+      if (c.detail) parts.push('제품 ' + c.detail + '건');
+      if (c.board) parts.push('게시물 ' + c.board + '건');
+      if (c.info) parts.push('회사정보 ' + c.info + '건');
+      if (c.seo) parts.push('SEO 설정');
+
+      var when = new Date(dr.savedAt);
+      var stale = dr.headSha && S.headSha && dr.headSha !== S.headSha;
+
+      var body = el('div', {}, [
+        el('p', { text: '발행하지 않고 남겨둔 작업이 있습니다.' }),
+        el('p', { class: 'hint', style: 'margin-top:6px',
+          text: when.getFullYear() + '.' + pad(when.getMonth() + 1) + '.' + pad(when.getDate()) + ' ' +
+                pad(when.getHours()) + ':' + pad(when.getMinutes()) + ' 에 마지막으로 저장됨' }),
+        parts.length ? el('ul', { style: 'margin:12px 0 0 18px' }, parts.map(function (p) { return el('li', { text: p }); })) : null,
+        stale ? el('p', { class: 'hint', style: 'margin-top:14px;color:var(--warn)',
+          text: '※ 그 사이 홈페이지가 다른 곳에서 수정되었습니다. 이어서 작업하면 그 수정이 덮어써질 수 있으니, 되도록 새로 시작하시길 권합니다.' }) : null,
+        el('p', { class: 'hint', style: 'margin-top:14px', text: '이어서 작업하시겠습니까? “새로 시작”을 고르면 남겨둔 작업은 지워집니다.' })
+      ]);
+
+      return confirmBox('이어서 작업하기', body, '이어서 작업').then(function (ok) {
+        if (!ok) {
+          draftReady = true;
+          draftClear();
+          return false;
+        }
+        S.doc = new SiteDoc(dr.html);
+        S.doc.restored = true;                 // 발행 버튼이 살아 있도록
+        S.imgChanges = dr.imgChanges || {};
+        S.changed = dr.changed || S.changed;
+        S.blockCache = {};
+        prodSel = {};
+        draftReady = true;
+        buildAll();
+        updateChangeUI();
+        showDraftMark(dr.savedAt);
+        toast('저장해 둔 작업을 불러왔습니다.', 'ok');
+        return true;
+      });
+    }).catch(function () { draftReady = true; });
   }
 
   /* ===================== 사이트 로드 ===================== */
@@ -251,6 +379,11 @@
       e.textContent = v;
       e.hidden = !v;
     });
+
+    // 작업 내용을 브라우저에 자동 보관 (발행 전 새로고침해도 남도록)
+    if (draftReady) {
+      if (n) draftTouch(); else { clearTimeout(draftTimer); draftClear(); }
+    }
   }
 
   /* ===================== 대시보드 ===================== */
@@ -1727,6 +1860,8 @@
       if (!res) { busy(false); return; }
       busy(false);
       toast('발행되었습니다. 1~2분 뒤 홈페이지에 반영됩니다.', 'ok', 6000);
+      clearTimeout(draftTimer);
+      draftClear();                       // 발행했으니 임시저장본은 지운다
       return loadSite().then(function () { busy(false); });
     }).catch(function (e) {
       busy(false);
@@ -1801,8 +1936,10 @@
 
     $('#publishBtn').addEventListener('click', publish);
     $('#discardBtn').addEventListener('click', function () {
-      if (!window.confirm('저장하지 않은 변경사항을 모두 취소할까요?')) return;
+      if (!window.confirm('저장하지 않은 변경사항을 모두 취소할까요?\n임시저장해 둔 내용도 함께 지워집니다.')) return;
       busy(true, '되돌리는 중…');
+      clearTimeout(draftTimer);
+      draftClear();
       loadSite().then(function () { busy(false); toast('변경사항을 취소했습니다.'); })
         .catch(function (e) { busy(false); toast(e.message, 'err'); });
     });
