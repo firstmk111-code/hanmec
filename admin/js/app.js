@@ -1358,7 +1358,7 @@
 
   /* ---------- 이미지 ---------- */
 
-  /* 사양표 아래 이미지(extraImg)는 따로 큰 영역으로 뺐다. renderExtraImg() 참고 */
+  /* 추가 이미지(extraImg)는 따로 큰 영역으로 뺐다. renderExtraImg() 참고 */
   var PROD_IMG_SLOTS = [
     { f: 'img', label: '목록 사진', hint: '제품소개 목록 카드에 나옵니다' },
     { f: 'detailImg', label: '상세 대표 사진', hint: '비우면 목록 사진을 씁니다' },
@@ -1414,7 +1414,7 @@
     renderExtraImg();
   }
 
-  /* 제품 상세페이지에서 "제품사양 표 바로 아래" 에 나오는 이미지 */
+  /* 제품 상세페이지에서 특징/기능 표 아래에 나오는 이미지 */
   function renderExtraImg() {
     var p = prodById(S.curDetail);
     var host = $('#dtExtraImg');
@@ -1430,16 +1430,16 @@
             : el('span', { class: 'dt-noimg', text: '등록된 이미지가 없습니다' })
       ]),
       el('div', { class: 'dt-extrainfo' }, [
-        el('div', { class: 'dt-fn', style: 'margin:0 0 10px', text: src ? src.split('/').pop() : '이미지를 등록하면 사양표 바로 아래에 표시됩니다.' }),
+        el('div', { class: 'dt-fn', style: 'margin:0 0 10px', text: src ? src.split('/').pop() : '이미지를 등록하면 특징 / 기능 표 아래에 표시됩니다.' }),
         el('div', { class: 'row' }, [
           el('button', {
             class: 'btn primary', text: src ? '이미지 교체' : '이미지 추가',
-            onclick: function () { pickProdImage('extraImg', '사양표 아래', renderExtraImg); }
+            onclick: function () { pickProdImage('extraImg', '추가', renderExtraImg); }
           }),
           src ? el('button', {
             class: 'btn danger', text: '이미지 삭제',
             onclick: function () {
-              if (!window.confirm('사양표 아래 이미지를 삭제할까요?')) return;
+              if (!window.confirm('추가 이미지를 삭제할까요?')) return;
               prodMutate(function (arr) { arr[prodIndex(p.id)].extraImg = ''; });
               renderExtraImg();
               toast('삭제되었습니다. 발행하면 홈페이지에 반영됩니다.');
