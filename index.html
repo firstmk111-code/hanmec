@@ -1001,7 +1001,7 @@ function renderProductDetail(pid){
  var hint=p.spinHint?'<div class="lpr-view-hint" id="lpr360hint"><img class="lpr-view-360ico" src="images/vector-black-360-degrees-view-icon.png" alt="360\uB3C4 \uD68C\uC804" draggable="false" loading="lazy"><span>\uC88C\uC6B0\uB85C \uB4DC\uB798\uADF8\uD574 \uC81C\uD488\uC744 \uD68C\uC804\uD574 \uBCF4\uC138\uC694</span></div>':'';
  var color=p.colorImg?('<div class="product-color-option"><img class="product-color-swatch" src="'+pdEsc(p.colorImg)+'" alt="\uC81C\uD488 \uC0C9\uC0C1 \uC635\uC158 \uC608\uC2DC" loading="lazy"><div class="product-color-option__content"><strong>'+(p.colorTitle||'')+'</strong><p>'+(p.colorDesc||'')+'</p></div></div>'):'';
  var spec=(p.specs&&p.specs.length)?('<div class="sub-h reveal">\uC81C\uD488\uC0AC\uC591</div><table class="spec-tbl reveal d1"><tbody>'+pdRows(p.specs,4)+'</tbody></table>'):'';
- var extra=p.extraImg?('<div class="dp-extra reveal d1" style="margin-top:18px"><img class="dp-extra-img" src="'+pdEsc(p.extraImg)+'" alt="\uC81C\uD488 \uC0AC\uC591 \uC774\uBBF8\uC9C0" loading="lazy" style="width:100%;height:auto;border-radius:12px;border:1px solid #e7edf5"></div>'):'';
+ var extra=p.extraImg?('<div class="dp-extra reveal d1" style="margin-top:40px"><img class="dp-extra-img" src="'+pdEsc(p.extraImg)+'" alt="\uC81C\uD488 \uC0AC\uC591 \uC774\uBBF8\uC9C0" loading="lazy" style="width:100%;height:auto;border-radius:12px;border:1px solid #e7edf5"></div>'):'';
  var feat=(p.feats&&p.feats.length)?('<div class="sub-h reveal">\uD2B9\uC9D5 / \uAE30\uB2A5</div><table class="spec-tbl feat-tbl reveal d1"><tbody>'+pdRows(p.feats,2)+'</tbody></table>'):'';
  var ttl=p.title||p.name, sub=p.subtitle||p.tagline;
  var model=p.model?('<div class="pd-model" style="font-size:14px;font-weight:600;color:#5d6a7d;margin-top:4px;letter-spacing:-.01em">'+pdEsc(p.model)+'</div>'):'';
@@ -1014,7 +1014,7 @@ function renderProductDetail(pid){
   '<img class="lpr-view-img" id="lpr360img" src="'+pdEsc(p.detailImg||p.img)+'" alt="'+pdEsc(p.name)+'" draggable="false"></div>'+hint+'</div>'+
   '<div class="lpr-info"><span class="pd-cat">'+pdEsc(p.badge||p.cat)+'</span><h3 class="pd-name">'+pdEsc(ttl)+'</h3>'+model+
   '<div class="dp-desc">'+(p.desc||'')+'</div>'+color+'</div></div>'+
-  spec+extra+feat+
+  spec+feat+extra+
   '<div style="margin-top:50px"><div class="rel"><a data-go="products" href="javascript:void(0)">\uC81C\uD488 \uBAA9\uB85D <span>&#8594;</span></a>'+
   '<a data-go="contact" href="javascript:void(0)">\uACAC\uC801 \uBB38\uC758 <span>&#8594;</span></a>'+
   '<a data-go="ai" href="javascript:void(0)">\uC194\uB8E8\uC158 <span>&#8594;</span></a></div></div>'+

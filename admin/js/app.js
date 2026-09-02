@@ -292,7 +292,7 @@
                 pad(when.getHours()) + ':' + pad(when.getMinutes()) + ' 에 마지막으로 저장됨' }),
         parts.length ? el('ul', { style: 'margin:12px 0 0 18px' }, parts.map(function (p) { return el('li', { text: p }); })) : null,
         stale ? el('p', { class: 'hint', style: 'margin-top:14px;color:var(--warn)',
-          text: '※ 그 사이 홈페이지가 다른 곳에서 수정되었습니다. 이어서 작업하면 그 수정이 덮어써질 수 있으니, 되도록 새로 시작하시길 권합니다.' }) : null,
+          text: '※ 그 사이 홈페이지가 다른 곳에서 수정되었습니다. 남겨둔 내용만 최신 홈페이지 위에 얹어서 이어갑니다.' }) : null,
         el('p', { class: 'hint', style: 'margin-top:14px', text: '이어서 작업하시겠습니까? “새로 시작”을 고르면 남겨둔 작업은 지워집니다.' })
       ]);
 
@@ -302,8 +302,7 @@
           draftClear();
           return false;
         }
-        S.doc = new SiteDoc(dr.html);
-        S.doc.restored = true;                 // 발행 버튼이 살아 있도록
+        var merged = mergeDraftInto(S.doc, dr.html);
         S.imgChanges = dr.imgChanges || {};
         S.changed = dr.changed || S.changed;
         S.blockCache = {};
@@ -312,10 +311,38 @@
         buildAll();
         updateChangeUI();
         showDraftMark(dr.savedAt);
-        toast('저장해 둔 작업을 불러왔습니다.', 'ok');
+        toast(merged ? '저장해 둔 작업을 불러왔습니다.' : '불러올 변경 내용이 없어 최신 상태로 시작합니다.', 'ok');
         return true;
       });
     }).catch(function () { draftReady = true; });
+  }
+
+  /* 임시저장본을 "통째로" 씌우면 그 사이 바뀐 홈페이지 코드까지 옛것으로 되돌아간다.
+     그래서 저장본에서 내용(제품·실적·페이지 글·푸터·SEO)만 뽑아
+     방금 불러온 최신 문서 위에 얹는다. */
+  function mergeDraftInto(fresh, draftHtml) {
+    var dd;
+    try { dd = new SiteDoc(draftHtml); } catch (e) { return false; }
+    var changed = false;
+    var same = function (a, b) { return JSON.stringify(a) === JSON.stringify(b); };
+
+    if (dd.hasProducts() && fresh.hasProducts() && !same(dd.productsData(), fresh.productsData())) {
+      fresh.setProductsData(dd.productsData());
+      changed = true;
+    }
+    if (!same(dd.perfData(), fresh.perfData())) {
+      fresh.setPerfData(dd.perfData());
+      changed = true;
+    }
+    dd.order.forEach(function (k) {
+      if (fresh.pages[k] && dd.pageHtml(k) !== fresh.pageHtml(k)) {
+        fresh.setPageHtml(k, dd.pageHtml(k));
+        changed = true;
+      }
+    });
+    if (dd.shellHtml() !== fresh.shellHtml()) { fresh.setShellHtml(dd.shellHtml()); changed = true; }
+    if (dd.head !== fresh.head) { fresh.setHead(dd.head); changed = true; }
+    return changed;
   }
 
   /* ===================== 사이트 로드 ===================== */

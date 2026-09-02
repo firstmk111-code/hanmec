@@ -370,10 +370,9 @@
   /* ===================== 5. 직렬화 ===================== */
 
   SiteDoc.prototype.hasChanges = function () {
-    // restored: 임시저장에서 불러온 문서 (이미 편집된 상태이므로 변경사항이 있는 것으로 본다)
     return Object.keys(this.pageEdits).length > 0 || this.perfEdit !== null ||
       this.productsEdit != null || this.shellEdit !== null || this.headEdit !== undefined ||
-      this.imageRenames.length > 0 || !!this.baseForceDirty || !!this.restored;
+      this.imageRenames.length > 0 || !!this.baseForceDirty;
   };
 
   SiteDoc.prototype.serialize = function () {
