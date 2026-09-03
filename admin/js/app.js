@@ -438,10 +438,13 @@
   }
 
   /* 관리자에서 발행한 내역인지 판별.
-     제작사가 손본 코드 수정 내역은 담당자에게 혼란만 주므로 목록에서 뺀다. */
+     제작사가 손본 코드 수정 내역은 담당자에게 혼란만 주므로 목록에서 뺀다.
+     판단은 첫 줄(제목)로만 한다 — 본문까지 보면 제작사 커밋 설명에 같은 문구가
+     들어갔을 때 걸러지지 않는다. 관리자 발행은 항상 publish() 가
+     '홈페이지 수정: …' 형태로 제목을 만든다. */
   function isAdminPublish(c) {
-    var m = String((c && c.message) || '');
-    return m.indexOf('관리자 페이지에서 발행') >= 0 || /^홈페이지 수정\s*:/.test(m);
+    var first = String((c && c.message) || '').split('\n')[0].trim();
+    return /^홈페이지 수정\s*:/.test(first);
   }
 
   function loadCommits(host, limit) {
