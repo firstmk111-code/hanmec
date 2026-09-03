@@ -134,6 +134,44 @@ main{margin-left:250px;padding:calc(var(--topbar) + 24px) 24px 60px}
 .img-act .btn{flex:1}
 .empty{padding:60px 20px;text-align:center;color:var(--slate2)}
 
+/* ---------- 사용 위치별 이미지 영역 ---------- */
+.img-legend{display:flex;flex-wrap:wrap;align-items:center;gap:7px;font-size:12px;color:var(--slate);
+  background:#f7f9fc;border:1px solid var(--line);border-radius:9px;padding:10px 13px;margin:0 0 16px}
+.img-legend .badge{margin-left:6px}
+.img-legend .badge:first-child{margin-left:0}
+.img-toolbar .sel{max-width:190px}
+.badge.blue{background:#eaf1fb;color:#2f62a8}
+
+.ia{border:1px solid var(--line);border-radius:12px;background:#fff;padding:16px 16px 18px;margin-bottom:16px}
+.ia-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.ia-crumb{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;color:var(--slate)}
+.ia-crumb span{position:relative;padding-right:12px}
+.ia-crumb span:after{content:'\203A';position:absolute;right:2px;color:var(--slate2)}
+.ia-crumb span:last-child:after{display:none}
+.ia-crumb .last{font-weight:800;color:var(--ink);font-size:14px}
+.ia-meta{display:flex;align-items:center;gap:8px}
+.ia-n{font-size:12px;color:var(--slate2)}
+.ia-head > .btn{margin-left:auto}
+.ia-note{font-size:12.5px;color:var(--slate);background:#f7f9fc;border-radius:8px;padding:9px 12px;margin:0 0 12px}
+.thumb .ord{position:absolute;top:8px;right:8px;background:rgba(20,32,48,.72);color:#fff;
+  font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:20px}
+.ia-move{display:flex;gap:4px;flex:none}
+.ia-move .btn{width:30px;padding:0;flex:none}
+
+/* 추가 대화상자 */
+.ga-where{background:#f5f9fd;border:1px solid var(--brand-l);border-radius:9px;padding:12px 14px;margin-bottom:16px}
+.ga-where-t{font-size:12px;font-weight:700;color:var(--brand);margin-bottom:4px}
+.ga-where-v{font-size:14.5px;font-weight:800;color:var(--ink);margin-bottom:6px}
+.ga-pick{display:grid;grid-template-columns:200px 1fr;gap:14px;align-items:start}
+.ga-prev{height:150px;display:flex;align-items:center;justify-content:center;background:#f3f5f9;
+  border:1px solid var(--line);border-radius:8px;overflow:hidden;padding:8px}
+.ga-prev img{max-width:100%;max-height:100%;width:auto;object-fit:contain}
+.ga-fields{margin-top:18px;display:grid;gap:14px}
+.ga-field{display:flex;flex-direction:column;gap:5px}
+.ga-field label{font-size:13px;font-weight:700;color:var(--ink)}
+.ga-field .hint{font-size:11.5px}
+.cmp.one{grid-template-columns:1fr;max-width:280px}
+
 /* ---------- 텍스트 블록 ---------- */
 .blk{border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px;background:#fff;transition:.15s}
 .blk.changed{border-color:var(--warn);background:#fffdf7}

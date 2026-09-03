@@ -499,46 +499,397 @@
     renderImageGrid();
   }
 
+  /* ---------- 이미지 관리: 사용 위치별 영역 모델 ----------
+     · 여러 장이 늘어서는 자리(갤러리)  → 추가·교체·삭제·순서 변경
+     · 그 밖의 이미지                   → 교체만
+     · 이미 전용 화면이 있는 자리        → 그 화면으로 안내만
+     페이지 이름을 코드에 적어두지 않고 SiteDoc 이 찾아낸 구조를 그대로 쓴다. */
+
+  // 전용 관리 화면이 따로 있는 페이지 (중복 구현 금지)
+  var MANAGED_BY = {
+    archive: { nav: 'board', name: '공지사항 · 자료실' },
+    notice: { nav: 'board', name: '공지사항 · 자료실' }
+  };
+
+  function areaBadge(kind) {
+    if (kind === 'card') return { cls: 'blue', text: '콘텐츠 추가 가능' };
+    if (kind === 'single') return { cls: 'gray', text: '교체만 가능' };
+    if (kind === 'managed') return { cls: 'gray', text: '전용 화면에서 관리' };
+    return { cls: 'ok', text: '여러 장 추가 가능' };
+  }
+
+  /** 사람이 읽는 사용 위치: 회사소개 > 인증현황 > 특허
+      "인증현황" 과 "인증 현황" 처럼 띄어쓰기만 다른 것은 한 번만 넣는다. */
+  function crumbOf(parts) {
+    var out = [], seen = {};
+    parts.forEach(function (p) {
+      if (!p) return;
+      var k = String(p).replace(/\s+/g, '');
+      if (seen[k]) return;
+      seen[k] = 1;
+      out.push(p);
+    });
+    return out;
+  }
+  function groupName(id) {
+    var g = SiteDoc.GROUPS.filter(function (x) { return x.id === id; })[0];
+    return g ? g.name : '';
+  }
+
+  /** 화면에 그릴 영역 목록을 만든다 */
+  function buildAreas() {
+    var areas = [];
+    var claimed = {};
+
+    (S.doc.listGalleries() || []).forEach(function (g) {
+      g.items.forEach(function (it) { claimed[it.src] = true; });
+      var managed = MANAGED_BY[g.page];
+      var grp = SiteDoc.groupOfPage(g.page);
+      areas.push({
+        type: managed ? 'managed' : 'gallery',
+        managed: managed || null,
+        id: g.id,
+        group: grp,
+        page: g.page,
+        pageLabel: g.pageNames.join(' · '),
+        areaLabel: g.area,
+        category: g.category,
+        kind: managed ? 'managed' : g.kind,
+        crumb: crumbOf([groupName(grp), g.pageNames.join(' · '), g.area, g.category]),
+        slots: g.slots,
+        items: g.items
+      });
+    });
+
+    // 갤러리에 속하지 않은 나머지 = 교체만 (제품·실적은 전용 화면 안내)
+    var rest = {};
+    (S.allImages || []).forEach(function (im) {
+      if (claimed[im.path]) return;
+      var u = im.uses[0] || {};
+      var grp = im.group;
+      var owner = u.product ? { nav: 'detail', name: '제품상세', label: '제품소개' }
+        : u.perf ? { nav: 'perf', name: '주요실적 관리', label: '주요실적' } : null;
+      var label = owner ? owner.label
+        : (u.pageName || (u.shell ? '헤더·푸터' : '상단 배너'));
+      var key = grp + '|' + label;
+
+      if (!rest[key]) {
+        rest[key] = {
+          type: 'single', kind: owner ? 'managed' : 'single', managed: owner,
+          id: 'single:' + key, group: grp, page: u.page || '',
+          pageLabel: label, areaLabel: '', category: '',
+          crumb: crumbOf([groupName(grp), label]),
+          images: []
+        };
+      }
+      rest[key].images.push(im);
+    });
+    Object.keys(rest).forEach(function (k) { areas.push(rest[k]); });
+
+    return areas;
+  }
+
+  function fillAreaFilters(areas) {
+    function fill(sel, values, keep) {
+      var cur = keep === undefined ? sel.value : keep;
+      var first = sel.options[0];
+      sel.innerHTML = '';
+      sel.appendChild(first);
+      uniq(values.filter(Boolean)).forEach(function (v) {
+        sel.appendChild(el('option', { value: v, text: v }));
+      });
+      sel.value = cur;
+      if (sel.value !== cur) sel.value = '';
+    }
+    var inTab = areas.filter(function (a) { return a.group === S.curImgTab; });
+    fill($('#imgFPage'), inTab.map(function (a) { return a.pageLabel; }));
+    var byPage = inTab.filter(function (a) { return !$('#imgFPage').value || a.pageLabel === $('#imgFPage').value; });
+    fill($('#imgFArea'), byPage.map(function (a) { return a.areaLabel; }));
+    var byArea = byPage.filter(function (a) { return !$('#imgFArea').value || a.areaLabel === $('#imgFArea').value; });
+    fill($('#imgFCat'), byArea.map(function (a) { return a.category; }));
+  }
+
   function renderImageGrid() {
     var q = ($('#imgSearch').value || '').trim().toLowerCase();
     var onlyChanged = $('#imgOnlyChanged').checked;
-    var list = S.allImages.filter(function (i) {
-      if (i.group !== S.curImgTab) return false;
-      if (onlyChanged && !S.imgChanges[i.path]) return false;
-      if (q && (i.label + ' ' + i.path).toLowerCase().indexOf(q) < 0) return false;
+    var areas = buildAreas();
+    fillAreaFilters(areas);
+
+    var fPage = $('#imgFPage').value, fArea = $('#imgFArea').value, fCat = $('#imgFCat').value;
+    var host = $('#imgAreas');
+    host.innerHTML = '';
+    var shown = 0;
+
+    areas.filter(function (a) {
+      if (a.group !== S.curImgTab) return false;
+      if (fPage && a.pageLabel !== fPage) return false;
+      if (fArea && a.areaLabel !== fArea) return false;
+      if (fCat && a.category !== fCat) return false;
       return true;
+    }).forEach(function (a) {
+      var node = a.type === 'single' ? renderSingleArea(a, q, onlyChanged) : renderGalleryArea(a, q, onlyChanged);
+      if (!node) return;
+      shown += node.__count;
+      host.appendChild(node);
     });
 
-    $('#imgCount').textContent = list.length + '개 표시';
-    var grid = $('#imgGrid');
-    grid.innerHTML = '';
-    if (!list.length) { grid.innerHTML = '<div class="empty">해당하는 이미지가 없습니다.</div>'; return; }
+    $('#imgCount').textContent = shown + '개 표시';
+    if (!shown) host.innerHTML = '<div class="empty">해당하는 이미지가 없습니다.</div>';
+  }
 
-    list.forEach(function (im) {
-      var ch = S.imgChanges[im.path];
-      var src = ch ? ch.previewUrl : assetUrl(im.path);
-      var uses = uniq(im.uses.map(useLabel));
+  function areaHead(a, count, extra) {
+    var b = areaBadge(a.kind);
+    return el('div', { class: 'ia-head' }, [
+      el('div', { class: 'ia-crumb' }, a.crumb.map(function (c, i) {
+        return el('span', { class: i === a.crumb.length - 1 ? 'last' : '', text: c });
+      })),
+      el('div', { class: 'ia-meta' }, [
+        el('span', { class: 'badge ' + b.cls, text: b.text }),
+        el('span', { class: 'ia-n', text: '현재 이미지 ' + count + '개' })
+      ]),
+      extra || null
+    ]);
+  }
 
-      // 원본 이미지가 커서(전체 60MB 이상) 브라우저 기본 지연 로딩에 맡긴다
-      var thumbBox = el('div', { class: 'thumb' }, [
+  /** 교체만 가능한 이미지 묶음 */
+  function renderSingleArea(a, q, onlyChanged) {
+    var list = a.images.filter(function (im) {
+      if (onlyChanged && !S.imgChanges[im.path]) return false;
+      if (q && (im.label + ' ' + im.path).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+    if (!list.length) return null;
+
+    var link = a.managed ? el('button', {
+      class: 'btn sm', text: a.managed.name + ' 에서 관리 ↗',
+      onclick: function () { go(a.managed.nav); }
+    }) : null;
+
+    var box = el('div', { class: 'ia' }, [areaHead(a, a.images.length, link)]);
+    if (a.managed) {
+      box.appendChild(el('p', { class: 'ia-note', text: '이 자리는 ‘' + a.managed.name + '’ 화면에서 추가·삭제·순서까지 관리합니다. 여기서는 이미지 교체만 하실 수 있습니다.' }));
+    }
+    var grid = el('div', { class: 'img-grid' });
+    list.forEach(function (im) { grid.appendChild(imageCard(im, a)); });
+    box.appendChild(grid);
+    box.__count = list.length;
+    return box;
+  }
+
+  /** 여러 장이 늘어서는 자리 */
+  function renderGalleryArea(a, q, onlyChanged) {
+    var hit = a.items.filter(function (it) {
+      if (onlyChanged && !S.imgChanges[it.src]) return false;
+      if (q && (it.text + ' ' + it.src).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+    if (!hit.length) return null;
+
+    var addBtn = null;
+    if (a.type === 'managed') {
+      addBtn = el('button', {
+        class: 'btn sm', text: a.managed.name + ' 에서 관리 ↗',
+        onclick: function () { go(a.managed.nav); }
+      });
+    } else {
+      addBtn = el('button', {
+        class: 'btn sm primary ia-add', text: a.kind === 'card' ? '+ 콘텐츠 추가' : '+ 이미지 추가',
+        onclick: function () { addGalleryDialog(a); }
+      });
+    }
+
+    var box = el('div', { class: 'ia' }, [areaHead(a, a.items.length, addBtn)]);
+    if (a.type === 'managed') {
+      box.appendChild(el('p', { class: 'ia-note', text: '이 자리는 ‘' + a.managed.name + '’ 화면에서 글·이미지를 함께 관리합니다. 여기서는 이미지 교체만 하실 수 있습니다.' }));
+    }
+
+    var grid = el('div', { class: 'img-grid' });
+    a.items.forEach(function (it, idx) {
+      if (hit.indexOf(it) < 0) return;
+      grid.appendChild(galleryCard(a, it, idx));
+    });
+    box.appendChild(grid);
+    box.__count = hit.length;
+    return box;
+  }
+
+  /** 갤러리 항목 카드 (교체 / 삭제 / 순서) */
+  function galleryCard(a, it, idx) {
+    var ch = S.imgChanges[it.src];
+    var pend = S.imgChanges['__new__' + it.src];
+    var src = ch ? ch.previewUrl : (pend ? pend.previewUrl : assetUrl(it.src));
+    var im = { path: it.src, label: it.text || it.alt, uses: [{ page: a.page, pageName: a.pageLabel }] };
+    var canEdit = a.type === 'gallery';
+
+    return el('div', { class: 'img-card' + (ch ? ' changed' : '') }, [
+      el('div', { class: 'thumb' }, [
+        el('img', { src: src, loading: 'lazy', decoding: 'async', alt: '' }),
+        ch ? el('span', { class: 'flag', text: '교체됨' }) : null,
+        el('span', { class: 'ord', text: (idx + 1) + '번째' })
+      ]),
+      el('div', { class: 'img-meta' }, [
+        el('div', { class: 'lb', text: it.text || it.alt || '(설명 없음)' }),
+        el('div', { class: 'fn', text: (ch ? ch.fileName : it.src.split('/').pop()) }),
+        el('div', { class: 'use' }, a.crumb.map(function (c) { return el('span', { text: c }); }))
+      ]),
+      el('div', { class: 'img-act' }, [
+        el('button', { class: 'btn sm primary', text: ch ? '다시 교체' : '교체', onclick: function () { pickImage(im); } }),
+        canEdit ? el('button', {
+          class: 'btn sm danger', text: '삭제',
+          disabled: a.items.length <= 1 ? 'disabled' : null,
+          onclick: function () { removeGalleryDialog(a, idx); }
+        }) : null,
+        canEdit ? el('div', { class: 'ia-move' }, [
+          el('button', { class: 'btn sm', text: '↑', title: '앞으로', disabled: idx === 0 ? 'disabled' : null,
+            onclick: function () { moveGallery(a, idx, idx - 1); } }),
+          el('button', { class: 'btn sm', text: '↓', title: '뒤로', disabled: idx === a.items.length - 1 ? 'disabled' : null,
+            onclick: function () { moveGallery(a, idx, idx + 1); } })
+        ]) : null
+      ])
+    ]);
+  }
+
+  /** 교체만 가능한 이미지 카드 (기존 동작 그대로) */
+  function imageCard(im, a) {
+    var ch = S.imgChanges[im.path];
+    var src = ch ? ch.previewUrl : assetUrl(im.path);
+    return el('div', { class: 'img-card' + (ch ? ' changed' : '') }, [
+      el('div', { class: 'thumb' }, [
         el('img', { src: src, loading: 'lazy', decoding: 'async', alt: '' }),
         ch ? el('span', { class: 'flag', text: '교체됨' }) : null
-      ]);
+      ]),
+      el('div', { class: 'img-meta' }, [
+        el('div', { class: 'lb', text: im.label || '(설명 없음)' }),
+        el('div', { class: 'fn', text: (ch ? ch.fileName : im.path.split('/').pop()) }),
+        el('div', { class: 'use' }, (a ? a.crumb : uniq(im.uses.map(useLabel))).map(function (u) { return el('span', { text: u }); }))
+      ]),
+      el('div', { class: 'img-act' }, [
+        el('button', { class: 'btn sm primary', text: ch ? '다시 교체' : '교체', onclick: function () { pickImage(im); } }),
+        ch ? el('button', { class: 'btn sm', text: '되돌리기', onclick: function () { undoImage(im.path); } })
+           : el('button', { class: 'btn sm', text: '원본', onclick: function () { window.open(assetUrl(im.path), '_blank'); } })
+      ])
+    ]);
+  }
 
-      var card = el('div', { class: 'img-card' + (ch ? ' changed' : '') }, [
-        thumbBox,
-        el('div', { class: 'img-meta' }, [
-          el('div', { class: 'lb', text: im.label || '(설명 없음)' }),
-          el('div', { class: 'fn', text: (ch ? ch.fileName : im.path.split('/').pop()) }),
-          el('div', { class: 'use' }, uses.map(function (u) { return el('span', { text: u }); }))
-        ]),
-        el('div', { class: 'img-act' }, [
-          el('button', { class: 'btn sm primary', text: ch ? '다시 교체' : '교체', onclick: function () { pickImage(im); } }),
-          ch ? el('button', { class: 'btn sm', text: '되돌리기', onclick: function () { undoImage(im.path); } })
-             : el('button', { class: 'btn sm', text: '원본', onclick: function () { window.open(assetUrl(im.path), '_blank'); } })
-        ])
-      ]);
-      grid.appendChild(card);
+  function afterGalleryChange(msg) {
+    S.changed.images++;
+    refreshBlocks && S.doc.order.forEach(function (k) { delete S.blockCache[k]; });
+    S.allImages = S.doc.listImages();
+    renderImageGrid();
+    updateChangeUI();
+    toast(msg, 'ok');
+  }
+
+  function moveGallery(a, from, to) {
+    if (!S.doc.moveGalleryItem(a.id, from, to)) return;
+    afterGalleryChange('순서를 바꿨습니다. 발행하면 홈페이지에 반영됩니다.');
+  }
+
+  function removeGalleryDialog(a, idx) {
+    var it = a.items[idx];
+    var body = el('div', {}, [
+      el('div', { class: 'cmp one' }, [
+        el('figure', {}, [el('figcaption', { text: '삭제할 이미지' }),
+          el('div', { class: 'box' }, [el('img', { src: assetUrl(it.src) })])])
+      ]),
+      el('p', { style: 'margin-top:14px' }, [
+        document.createTextNode('이 이미지는 '),
+        el('b', { text: a.crumb.join(' > ') }),
+        document.createTextNode(' 영역의 ' + (idx + 1) + '번째로 사용 중입니다.')
+      ]),
+      it.text ? el('p', { class: 'hint', style: 'margin-top:6px', text: '내용: ' + it.text }) : null,
+      el('p', { class: 'hint', style: 'margin-top:10px', text: '삭제하면 홈페이지에서 이 항목이 사라집니다. 발행 전이라면 ‘변경 취소’로 되돌릴 수 있습니다.' })
+    ]);
+    confirmBox('이미지 삭제', body, '삭제하기').then(function (ok) {
+      if (!ok) return;
+      if (!S.doc.removeGalleryItem(a.id, idx)) { toast('마지막 한 장은 지울 수 없습니다.', 'err'); return; }
+      afterGalleryChange('삭제되었습니다. 발행하면 홈페이지에 반영됩니다.');
+    });
+  }
+
+  /** 새 이미지(+글) 추가.
+      입력칸은 그 자리의 기존 항목에서 자동으로 뽑아낸다 (영역마다 코드를 따로 쓰지 않는다). */
+  function addGalleryDialog(a) {
+    var picked = null;
+    var inputs = [];
+
+    var preview = el('div', { class: 'box ga-prev' }, [el('span', { class: 'dt-noimg', text: '이미지를 선택해 주세요' })]);
+    var fileBtn = el('button', { class: 'btn primary', text: '이미지 파일 선택' });
+    var fileName = el('div', { class: 'hint', style: 'margin-top:8px', text: '아직 선택하지 않았습니다.' });
+
+    fileBtn.addEventListener('click', function () {
+      var input = $('#filePicker');
+      input.value = '';
+      input.onchange = function () {
+        var f = input.files[0];
+        if (!f) return;
+        busy(true, '이미지 준비 중…');
+        processImage(f).then(function (r) {
+          busy(false);
+          picked = r;
+          preview.innerHTML = '';
+          preview.appendChild(el('img', { src: r.dataUrl, alt: '' }));
+          fileName.textContent = r.name + ' · ' + r.w + '×' + r.h + 'px · ' + fmtSize(r.size) + (r.resized ? ' (자동 최적화됨)' : '');
+        }).catch(function (e) { busy(false); toast(e.message, 'err'); });
+      };
+      input.click();
+    });
+
+    // 기존 항목의 글칸 → 입력칸 (견본 글은 값이 아니라 안내문구로만 넣는다)
+    var names = slotNames(a.slots);
+    var fields = el('div', { class: 'ga-fields' });
+    a.slots.forEach(function (sample, i) {
+      var long = sample.length > 30;
+      var box = long ? el('textarea', { class: 'input', rows: 3 }) : el('input', { class: 'input', type: 'text' });
+      box.placeholder = sample.slice(0, 60);
+      inputs.push(box);
+      fields.appendChild(el('div', { class: 'ga-field' }, [
+        el('label', { text: names[i] }),
+        box,
+        el('span', { class: 'hint', text: '지금 있는 항목 예: “' + sample.slice(0, 40) + (sample.length > 40 ? '…' : '') + '”' })
+      ]));
+    });
+
+    var body = el('div', {}, [
+      el('div', { class: 'ga-where' }, [
+        el('div', { class: 'ga-where-t', text: '추가되는 위치' }),
+        el('div', { class: 'ga-where-v', text: a.crumb.join('  >  ') }),
+        el('div', { class: 'hint', text: '이 이미지는 위 영역의 마지막(' + (a.items.length + 1) + '번째)에 추가됩니다. 순서는 추가 후 ↑ ↓ 로 바꾸실 수 있습니다.' })
+      ]),
+      el('div', { class: 'ga-pick' }, [preview, el('div', {}, [fileBtn, fileName])]),
+      a.slots.length ? fields : el('p', { class: 'hint', text: '이 자리는 이미지만 들어갑니다. 입력할 글은 없습니다.' })
+    ]);
+
+    confirmBox(a.kind === 'card' ? '콘텐츠 추가' : '이미지 추가', body, '추가하기').then(function (ok) {
+      if (!ok) return;
+      if (!picked) { toast('이미지를 먼저 선택해 주세요.', 'err'); return; }
+      var texts = inputs.map(function (x, i) { return (x.value || '').trim(); });
+      var missing = a.slots.length && texts.some(function (t) { return !t; });
+      if (missing) { toast('내용을 모두 입력해 주세요.', 'err'); return; }
+
+      var newPath = CONFIG.uploadDir + 'add-' + stampNow() + '.' + picked.ext;
+      S.imgChanges['__new__' + newPath] = {
+        newPath: newPath, base64: picked.base64, previewUrl: picked.dataUrl,
+        fileName: picked.name, isNew: true
+      };
+      if (!S.doc.addGalleryItem(a.id, newPath, texts)) {
+        delete S.imgChanges['__new__' + newPath];
+        toast('추가하지 못했습니다. 새로고침 후 다시 시도해 주세요.', 'err');
+        return;
+      }
+      afterGalleryChange('추가되었습니다. 발행하면 홈페이지에 반영됩니다.');
+    });
+  }
+
+  /** 글칸 이름: 견본 글의 생김새로 짐작해 사람이 알아볼 이름을 붙인다 */
+  function slotNames(slots) {
+    if (slots.length === 1) return ['이름 · 설명'];
+    var titled = false;
+    return slots.map(function (s) {
+      if (/^[A-Z0-9 &·\-]+$/.test(s)) return '영문 표기';
+      if (s.length > 30) return '설명';
+      if (!titled) { titled = true; return '제목'; }
+      return '소제목';
     });
   }
 
@@ -1987,6 +2338,10 @@
 
     $('#imgSearch').addEventListener('input', renderImageGrid);
     $('#imgOnlyChanged').addEventListener('change', renderImageGrid);
+    // 페이지를 바꾸면 하위 선택은 초기화한다 (없는 조합이 남지 않도록)
+    $('#imgFPage').addEventListener('change', function () { $('#imgFArea').value = ''; $('#imgFCat').value = ''; renderImageGrid(); });
+    $('#imgFArea').addEventListener('change', function () { $('#imgFCat').value = ''; renderImageGrid(); });
+    $('#imgFCat').addEventListener('change', renderImageGrid);
 
     $('#txtPage').addEventListener('change', function () { S.curPage = this.value; renderText(); });
     $('#txtShowNav').addEventListener('change', renderText);

@@ -125,11 +125,20 @@
       <div class="card">
         <h3>이미지 관리</h3>
         <p class="desc">
-          홈페이지에 쓰인 이미지를 메뉴별로 나눠서 보여줍니다. 바꾸고 싶은 이미지의 <b>교체</b> 버튼을 눌러
-          새 이미지를 올린 뒤, 우측 상단 <b>저장하고 발행</b>을 누르면 홈페이지에 반영됩니다.
+          홈페이지에 쓰인 이미지를 <b>실제 사용 위치별로</b> 묶어서 보여줍니다.
+          <b>교체</b>는 지금 있는 이미지를 바꾸고, <b>+ 추가</b>는 이미지 개수를 늘립니다.
+          작업 후 우측 상단 <b>저장하고 발행</b>을 누르면 홈페이지에 반영됩니다.
         </p>
+        <div class="img-legend">
+          <span class="badge ok">여러 장 관리</span> 추가·교체·삭제·순서 변경까지 가능한 자리입니다.
+          <span class="badge blue">콘텐츠 추가</span> 이미지와 함께 제목·설명도 입력하는 카드입니다.
+          <span class="badge gray">교체만 가능</span> 디자인상 한 장만 들어가는 자리입니다.
+        </div>
         <div class="tabs" id="imgTabs"></div>
         <div class="img-toolbar">
+          <select class="input sel" id="imgFPage"><option value="">페이지 전체</option></select>
+          <select class="input sel" id="imgFArea"><option value="">상세 영역 전체</option></select>
+          <select class="input sel" id="imgFCat"><option value="">분류 전체</option></select>
           <input type="text" class="input" id="imgSearch" placeholder="이미지 이름·설명으로 검색">
           <label class="row" style="gap:6px;font-size:13px;color:var(--slate);cursor:pointer">
             <input type="checkbox" id="imgOnlyChanged" style="width:auto;min-height:auto"> 변경한 것만 보기
@@ -137,7 +146,7 @@
           <div class="sp" style="flex:1"></div>
           <span class="badge gray" id="imgCount"></span>
         </div>
-        <div class="img-grid" id="imgGrid"></div>
+        <div id="imgAreas"></div>
       </div>
     </section>
 

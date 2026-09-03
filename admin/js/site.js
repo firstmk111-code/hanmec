@@ -709,6 +709,346 @@
 
   SiteDoc.INFO_FIELDS = INFO_FIELDS;
 
+  /* ===================== 9. 이미지 갤러리 =====================
+     "같은 모양의 항목이 2개 이상 늘어서 있고, 항목마다 이미지가 1장씩 들어있는
+     자리" 를 갤러리로 본다. 페이지 이름이나 클래스 이름을 코드에 적어두지 않고
+     마크업 생김새만으로 찾아내므로, 새 페이지가 생겨도 그대로 동작한다.
+
+     항목을 새로 만들 때는 기존 항목의 원문을 그대로 복제해서 이미지 경로와
+     글자만 바꾼다. 그래서 여백·비율·반응형 등 디자인이 저절로 같아진다.
+     ============================================================ */
+
+  // 애니메이션 순번(d1,d2)·행 구분(r6)·상태(on) 처럼 "같은 종류인데 다르게 붙는" 클래스
+  var VARIANT_CLASS = /^(d\d+|r\d+|on|cur|active|reveal|lazy)$/;
+
+  function classSig(node) {
+    var cls = (attrOf(node, 'class') || '').split(/\s+/).filter(function (c) {
+      return c && !VARIANT_CLASS.test(c);
+    }).sort();
+    return node.tag + (cls.length ? '.' + cls.join('.') : '');
+  }
+  function elChildren(node) {
+    return node.children.filter(function (c) { return c.tag !== '#text'; });
+  }
+  /** 노드 안의 이미지들 (img 태그 + style 배경) */
+  function imagesInside(node, html) {
+    var out = [];
+    (function walk(n) {
+      if (n.tag === 'img') {
+        var s = attrOf(n, 'src');
+        if (s && /^images\//.test(s)) out.push({ node: n, src: s });
+      }
+      elChildren(n).forEach(walk);
+    })(node);
+    return out;
+  }
+  /** 원문 구간의 순수 글자 */
+  function sliceText(html, a, b) {
+    return html.slice(a, b).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  /** 항목 안에서 "글이 들어가는 칸" 을 찾는다 (다른 글칸을 품지 않는 잎만) */
+  function textSlots(item, html) {
+    var slots = [];
+    (function walk(n) {
+      elChildren(n).forEach(function (c) {
+        if (c.tag === 'img' || c.tag === 'svg') return;
+        var kids = elChildren(c).filter(function (k) { return k.tag !== 'img'; });
+        var own = sliceText(html, c.contentStart, c.contentEnd);
+        if (own && !kids.length) {
+          slots.push({ node: c, text: own, start: c.contentStart, end: c.contentEnd });
+        } else {
+          walk(c);
+        }
+      });
+    })(item);
+    return slots;
+  }
+
+  /** 페이지 안의 갤러리들. 컨테이너 위치는 "몇 번째 자식" 경로로 기억해 편집 후에도 찾을 수 있다. */
+  function scanGalleries(html, pageKey, pageName) {
+    if (!html) return [];
+    var root = parseNodes(html);
+    var found = [];
+
+    (function walk(node, path) {
+      var kids = elChildren(node);
+      var byShape = {};
+      kids.forEach(function (k, i) {
+        var s = classSig(k);
+        (byShape[s] = byShape[s] || []).push({ node: k, at: i });
+      });
+
+      Object.keys(byShape).forEach(function (shape) {
+        var group = byShape[shape];
+        if (group.length < 2) return;
+        // 모든 형제가 이미지를 정확히 1장씩 가져야 갤러리로 본다
+        var ok = group.every(function (g) { return imagesInside(g.node, html).length === 1; });
+        if (!ok) return;
+        // 붙어 있어야 한다. 사이에 다른 것이 끼어 있으면 통째로 다시 쓸 때 그것이 지워진다.
+        for (var c = 1; c < group.length; c++) if (group[c].at !== group[c - 1].at + 1) return;
+
+        var items = group.map(function (g) {
+          var img = imagesInside(g.node, html)[0];
+          return {
+            src: img.src,
+            alt: attrOf(img.node, 'alt') || '',
+            text: sliceText(html, g.node.contentStart, g.node.contentEnd),
+            start: g.node.start, end: g.node.end
+          };
+        });
+        var maxLen = items.reduce(function (a, it) { return Math.max(a, it.text.length); }, 0);
+        found.push({
+          page: pageKey,
+          pageName: pageName,
+          path: path.join('-') + '|' + shape,
+          shape: shape,
+          area: areaLabel(node, html, root),
+          category: paneLabel(node, html, root),
+          kind: maxLen === 0 ? 'plain' : (maxLen <= 40 ? 'captioned' : 'card'),
+          items: items,
+          slots: textSlots(group[0].node, html).map(function (s) { return s.text; }),
+          // 항목들이 차지한 구간만 바꾼다 (컨테이너 안의 다른 요소는 그대로 둔다)
+          spanStart: items[0].start,
+          spanEnd: items[items.length - 1].end
+        });
+      });
+
+      kids.forEach(function (k, i) { walk(k, path.concat(i)); });
+    })(root, []);
+
+    return found;
+  }
+
+  /** 이 자리 앞쪽에서 가장 가까운 제목 */
+  function areaLabel(node, html, root) {
+    var best = '';
+    (function scan(n) {
+      elChildren(n).forEach(function (c) {
+        if (c.start >= node.start) return;
+        if (/^h[1-3]$/.test(c.tag)) {
+          var t = sliceText(html, c.contentStart, c.contentEnd);
+          if (t) best = t.slice(0, 40);
+        }
+        scan(c);
+      });
+    })(root);
+    return best;
+  }
+
+  /** 탭 안이라면 그 탭 버튼의 글자를 분류 이름으로 쓴다 (내부 키가 아니라 고객이 보는 이름) */
+  function paneLabel(node, html, root) {
+    var pane = null, cur = node;
+    while (cur) {
+      var p = attrOf(cur, 'data-pane');
+      if (p && /tabpane/.test(attrOf(cur, 'class') || '')) { pane = p; break; }
+      cur = cur.parent;
+    }
+    if (!pane) return '';
+    var label = '';
+    (function find(n) {
+      if (label) return;
+      elChildren(n).forEach(function (c) {
+        if (label) return;
+        if (c.tag === 'button' && attrOf(c, 'data-pane') === pane) {
+          label = sliceText(html, c.contentStart, c.contentEnd);
+          return;
+        }
+        find(c);
+      });
+    })(root);
+    return label;
+  }
+
+  /** 전체 페이지의 갤러리 목록. 여러 페이지에 똑같이 들어간 블록은 하나로 묶는다. */
+  SiteDoc.prototype.listGalleries = function () {
+    var self = this;
+    var all = [];
+    this.order.forEach(function (key) {
+      scanGalleries(self.pageHtml(key), key, self.pageName(key)).forEach(function (g) { all.push(g); });
+    });
+
+    // 1단계: 항목 구성이 완전히 같은 갤러리는 "여러 페이지 공통" 으로 합친다 (거래처 로고 등)
+    var byFingerprint = [];
+    var seen = {};
+    all.forEach(function (g) {
+      var fp = g.shape + '::' + g.items.map(function (i) { return i.src; }).join(',');
+      if (seen[fp] !== undefined) {
+        byFingerprint[seen[fp]].places.push({ page: g.page, path: g.path });
+        if (byFingerprint[seen[fp]].pageNames.indexOf(g.pageName) < 0) byFingerprint[seen[fp]].pageNames.push(g.pageName);
+        return;
+      }
+      seen[fp] = byFingerprint.length;
+      g.places = [{ page: g.page, path: g.path }];
+      g.pageNames = [g.pageName];
+      byFingerprint.push(g);
+    });
+
+    /* 2단계: 같은 자리를 여러 줄로 나눠 담은 경우(거래처 로고의 plogo-row 처럼)
+       화면에서는 한 덩어리로 보이므로 관리자에서도 하나로 합쳐 보여준다.
+       각 줄은 part 로 남겨 두고, 항목이 늘거나 줄면 마지막 줄에서 흡수한다. */
+    var merged = [];
+    var byArea = {};
+    byFingerprint.forEach(function (g) {
+      var key = g.pageNames.join('|') + '::' + g.area + '::' + g.category + '::' + g.shape;
+      if (byArea[key] === undefined) {
+        byArea[key] = merged.length;
+        merged.push({
+          page: g.page, pageName: g.pageName, pageNames: g.pageNames,
+          area: g.area, category: g.category, shape: g.shape,
+          kind: g.kind, slots: g.slots,
+          id: g.page + '::' + g.path,
+          places: g.places,
+          parts: [{ places: g.places, count: g.items.length }],
+          items: g.items.slice()
+        });
+        return;
+      }
+      var m = merged[byArea[key]];
+      m.parts.push({ places: g.places, count: g.items.length });
+      g.items.forEach(function (i) { m.items.push(i); });
+    });
+    return merged;
+  };
+
+  /** id 로 갤러리를 다시 찾는다 (편집 뒤에도 구조 경로가 같으므로 그대로 잡힌다) */
+  SiteDoc.prototype.findGallery = function (id) {
+    var list = this.listGalleries();
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  };
+
+  /* ---------- 항목 만들기 ---------- */
+
+  /** 견본 항목의 원문을 복제해 이미지 경로와 글자만 바꾼다.
+      글칸을 먼저(뒤에서 앞으로) 바꾼 뒤 이미지 속성을 손대야 위치가 어긋나지 않는다.
+      항목마다 이미지는 1장뿐이므로 src/alt 는 단순 치환으로 충분하다. */
+  function buildItem(html, sampleStart, sampleEnd, src, texts) {
+    var frag = html.slice(sampleStart, sampleEnd);
+
+    var slots = textSlots(parseNodes(frag), frag);
+    slots.map(function (s, i) { return { s: s, i: i }; })
+      .sort(function (a, b) { return b.s.start - a.s.start; })
+      .forEach(function (x) {
+        if (texts && texts[x.i] !== undefined) {
+          frag = frag.slice(0, x.s.start) + esc(texts[x.i]) + frag.slice(x.s.end);
+        }
+      });
+
+    frag = frag.replace(/(<img\b[^>]*?\bsrc\s*=\s*)("[^"]*"|'[^']*')/i,
+      function (all, head) { return head + '"' + src + '"'; });
+
+    var altText = (texts && texts[0]) || '';
+    frag = frag.replace(/(<img\b[^>]*?\balt\s*=\s*)("[^"]*"|'[^']*')/i,
+      function (all, head) { return head + '"' + esc(altText) + '"'; });
+
+    return frag;
+  }
+
+  /** 갤러리 항목 배열을 다시 써넣는다 (추가·삭제·정렬 공통 경로).
+      여러 줄로 나뉜 자리는 원래 줄 길이를 지키고 남는 만큼은 마지막 줄이 받는다. */
+  SiteDoc.prototype.writeGallery = function (id, nextItems) {
+    var self = this;
+    var g = this.findGallery(id);
+    if (!g) return false;
+
+    // 줄별로 나눠 담을 개수 정하기
+    var sizes = g.parts.map(function (p) { return p.count; });
+    var fixed = sizes.slice(0, -1).reduce(function (a, b) { return a + b; }, 0);
+    sizes[sizes.length - 1] = Math.max(0, nextItems.length - fixed);
+    if (nextItems.length < fixed) {              // 앞줄까지 줄어들면 앞에서부터 다시 채운다
+      var left = nextItems.length;
+      sizes = sizes.map(function (s) { var take = Math.min(s, left); left -= take; return take; });
+    }
+
+    var cursor = 0;
+    var slices = sizes.map(function (n) { var s = nextItems.slice(cursor, cursor + n); cursor += n; return s; });
+
+    // 한 페이지 안에서 여러 구간을 고칠 때 위치가 밀리지 않도록 뒤에서부터 쓴다
+    var writes = [];
+    g.parts.forEach(function (part, pi) {
+      part.places.forEach(function (place) {
+        writes.push({ place: place, body: slices[pi].map(function (it) { return it.source; }).join('') });
+      });
+    });
+
+    var byPage = {};
+    writes.forEach(function (w) { (byPage[w.place.page] = byPage[w.place.page] || []).push(w); });
+
+    Object.keys(byPage).forEach(function (page) {
+      var html = self.pageHtml(page);
+      var list = scanGalleries(html, page, self.pageName(page));
+      var jobs = [];
+      byPage[page].forEach(function (w) {
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].path === w.place.path) { jobs.push({ start: list[i].spanStart, end: list[i].spanEnd, body: w.body }); break; }
+        }
+      });
+      jobs.sort(function (a, b) { return b.start - a.start; });
+      jobs.forEach(function (j) { html = html.slice(0, j.start) + j.body + html.slice(j.end); });
+      self.setPageHtml(page, html);
+    });
+    return true;
+  };
+
+  /** 갤러리의 현재 항목들을 원문 조각과 함께 가져온다 (여러 줄이면 이어 붙여서) */
+  SiteDoc.prototype.galleryItems = function (id) {
+    var self = this;
+    var g = this.findGallery(id);
+    if (!g) return [];
+    var out = [];
+    g.parts.forEach(function (part) {
+      var page = part.places[0].page;
+      var html = self.pageHtml(page);
+      var list = scanGalleries(html, page, self.pageName(page));
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].path !== part.places[0].path) continue;
+        list[i].items.forEach(function (it) {
+          out.push({ src: it.src, alt: it.alt, text: it.text, source: html.slice(it.start, it.end) });
+        });
+        break;
+      }
+    });
+    return out;
+  };
+
+  /** 새 이미지(+글)를 맨 뒤에 추가 */
+  SiteDoc.prototype.addGalleryItem = function (id, src, texts) {
+    var items = this.galleryItems(id);
+    if (!items.length) return false;
+    // 마지막 항목의 원문을 그대로 본떠서 만든다 (오프셋에 기대지 않는다)
+    var sample = items[items.length - 1].source;
+    items.push({ src: src, source: buildItem(sample, 0, sample.length, src, texts) });
+    return this.writeGallery(id, items);
+  };
+
+  SiteDoc.prototype.removeGalleryItem = function (id, index) {
+    var items = this.galleryItems(id);
+    if (index < 0 || index >= items.length || items.length <= 1) return false;
+    items.splice(index, 1);
+    return this.writeGallery(id, items);
+  };
+
+  SiteDoc.prototype.moveGalleryItem = function (id, from, to) {
+    var items = this.galleryItems(id);
+    if (from < 0 || from >= items.length || to < 0 || to >= items.length || from === to) return false;
+    var x = items.splice(from, 1)[0];
+    items.splice(to, 0, x);
+    return this.writeGallery(id, items);
+  };
+
+  /** 한 항목의 이미지만 교체 (같은 파일이 다른 자리에도 쓰일 때 그 자리는 건드리지 않는다) */
+  SiteDoc.prototype.replaceGalleryImage = function (id, index, src) {
+    var items = this.galleryItems(id);
+    if (index < 0 || index >= items.length) return false;
+    var old = items[index].src;
+    items[index].source = items[index].source.replace(
+      new RegExp('(src\\s*=\\s*["\'])' + escRe(old) + '(["\'])'), '$1' + src + '$2');
+    items[index].src = src;
+    return this.writeGallery(id, items);
+  };
+
+  SiteDoc.scanGalleries = scanGalleries;
+
   /* ===================== 내보내기 ===================== */
 
   SiteDoc.parseNodes = parseNodes;
