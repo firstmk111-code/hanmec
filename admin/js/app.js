@@ -437,18 +437,30 @@
     loadCommits($('#dashCommits'), 6);
   }
 
+  /* 관리자에서 발행한 내역인지 판별.
+     제작사가 손본 코드 수정 내역은 담당자에게 혼란만 주므로 목록에서 뺀다. */
+  function isAdminPublish(c) {
+    var m = String((c && c.message) || '');
+    return m.indexOf('관리자 페이지에서 발행') >= 0 || /^홈페이지 수정\s*:/.test(m);
+  }
+
   function loadCommits(host, limit) {
     host.innerHTML = '<div class="empty">불러오는 중…</div>';
-    S.be.commits(limit).then(function (list) {
+    var want = limit || 20;
+    // 걸러낸 뒤에도 충분히 남도록 넉넉히 받아온다
+    S.be.commits(Math.min(50, want * 4)).then(function (list) {
+      var mine = (list || []).filter(isAdminPublish).slice(0, want);
       host.innerHTML = '';
-      if (!list.length) { host.innerHTML = '<div class="empty">이력이 없습니다.</div>'; return; }
-      list.forEach(function (c) {
+      if (!mine.length) {
+        host.innerHTML = '<div class="empty">아직 발행한 내역이 없습니다.</div>';
+        return;
+      }
+      mine.forEach(function (c) {
         var d = new Date(c.date);
         var dt = d.getFullYear() + '.' + pad(d.getMonth() + 1) + '.' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
         host.appendChild(el('div', { class: 'cm' }, [
           el('div', { class: 'dt', text: dt }),
-          el('div', { class: 'ms', text: String(c.message).split('\n')[0] }),
-          el('a', { href: c.url, target: '_blank', rel: 'noopener', text: '보기 ↗' })
+          el('div', { class: 'ms', text: String(c.message).split('\n')[0] })
         ]));
       });
     }).catch(function (e) { host.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
@@ -1972,7 +1984,6 @@
     });
 
     $('#histReload').addEventListener('click', function () { loadCommits($('#histList'), 30); });
-    $('#histRepo').href = 'https://github.com/' + CONFIG.owner + '/' + CONFIG.repo + '/commits/' + CONFIG.branch;
 
     window.addEventListener('beforeunload', function (e) {
       if (hasChanges()) { e.preventDefault(); e.returnValue = ''; }
