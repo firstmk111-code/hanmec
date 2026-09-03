@@ -1225,7 +1225,7 @@
     var id = newProdId();
     var cat = S.curProdCat || PROD_CATS[0].value;
     prodMutate(function (arr) {
-      arr.push({ id: id, cat: cat, name: '새 제품', model: '', tagline: '', title: '', subtitle: '', badge: '', img: '', detailImg: '', desc: '', specs: [], feats: [] });
+      arr.push({ id: id, cat: cat, name: '새 제품', model: '', tagline: '', title: '', subtitle: '', badge: '', img: '', detailImg: '', desc: '', specs: [], feats: [], extraImg: '', extraImgPos: 'after-features' });
     });
     openProd(id);
     toast('새 제품이 만들어졌습니다. 내용을 채워 주세요.', 'ok');
@@ -1456,7 +1456,20 @@
     renderExtraImg();
   }
 
-  /* 제품 상세페이지에서 특징/기능 표 아래에 나오는 이미지 */
+  /* 추가 이미지를 상세페이지 어디에 보여줄지 — 제품마다 따로 저장된다.
+     값이 없는 기존 제품은 '특징 / 기능 아래' 로 본다. */
+  var EXTRA_POS = [
+    { v: 'after-spec', label: '제품사양 아래', desc: '제품사양 표가 끝난 직후 이미지를 표시합니다.' },
+    { v: 'after-features', label: '특징 / 기능 아래', desc: '특징 / 기능이 끝난 후 이미지를 표시합니다.' }
+  ];
+  function extraPosOf(p) { return p && p.extraImgPos === 'after-spec' ? 'after-spec' : 'after-features'; }
+  function extraPosLabel(p) {
+    var v = extraPosOf(p);
+    for (var i = 0; i < EXTRA_POS.length; i++) if (EXTRA_POS[i].v === v) return EXTRA_POS[i].label;
+    return '';
+  }
+
+  /* 제품 상세페이지에 들어가는 추가 이미지 (위치는 아래에서 고른다) */
   function renderExtraImg() {
     var p = prodById(S.curDetail);
     var host = $('#dtExtraImg');
@@ -1472,7 +1485,10 @@
             : el('span', { class: 'dt-noimg', text: '등록된 이미지가 없습니다' })
       ]),
       el('div', { class: 'dt-extrainfo' }, [
-        el('div', { class: 'dt-fn', style: 'margin:0 0 10px', text: src ? src.split('/').pop() : '이미지를 등록하면 특징 / 기능 표 아래에 표시됩니다.' }),
+        el('div', {
+          class: 'dt-fn', style: 'margin:0 0 10px',
+          text: src ? src.split('/').pop() : '이미지를 등록하면 아래에서 고른 위치에 표시됩니다.'
+        }),
         el('div', { class: 'row' }, [
           el('button', {
             class: 'btn primary', text: src ? '이미지 교체' : '이미지 추가',
@@ -1490,6 +1506,39 @@
         ])
       ])
     ]));
+
+    /* ---- 노출 위치 선택 ---- */
+    var cur = extraPosOf(p);
+    var wrap = el('div', { class: 'dt-poswrap' }, [
+      el('div', { class: 'dt-poshead', text: '이미지 노출 위치' })
+    ]);
+
+    EXTRA_POS.forEach(function (opt) {
+      var radio = el('input', { type: 'radio', name: 'dtExtraPos', value: opt.v });
+      radio.checked = (cur === opt.v);
+      radio.addEventListener('change', function () {
+        if (!radio.checked) return;
+        prodMutate(function (arr) { arr[prodIndex(p.id)].extraImgPos = opt.v; });
+        renderExtraImg();
+        toast('노출 위치를 “' + opt.label + '” 로 바꿨습니다. 발행하면 반영됩니다.', 'ok');
+      });
+
+      wrap.appendChild(el('label', { class: 'dt-pos' + (cur === opt.v ? ' on' : '') }, [
+        radio,
+        el('div', {}, [
+          el('div', { class: 'dt-pos-t', text: opt.label }),
+          el('div', { class: 'dt-pos-d', text: opt.desc })
+        ])
+      ]));
+    });
+
+    if (!src) {
+      wrap.appendChild(el('div', {
+        class: 'hint', style: 'margin-top:10px',
+        text: '※ 이미지를 등록해야 실제로 표시됩니다.'
+      }));
+    }
+    host.appendChild(wrap);
   }
 
   function pickProdImage(field, label, after) {
