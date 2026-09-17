@@ -556,6 +556,9 @@
      · 이미 전용 화면이 있는 자리        → 그 화면으로 안내만
      페이지 이름을 코드에 적어두지 않고 SiteDoc 이 찾아낸 구조를 그대로 쓴다. */
 
+  // 이 수보다 적게 남기면 그 자리를 관리자에서 다룰 수 없게 되므로 삭제를 막는다
+  var MIN_ITEMS = SiteDoc.MIN_GALLERY_ITEMS || 2;
+
   // 전용 관리 화면이 따로 있는 페이지 (중복 구현 금지)
   var MANAGED_BY = {
     archive: { nav: 'board', name: '공지사항 · 자료실' },
@@ -787,7 +790,8 @@
         el('button', { class: 'btn sm primary', text: ch ? '다시 교체' : '교체', onclick: function () { pickImage(im); } }),
         canEdit ? el('button', {
           class: 'btn sm danger', text: '삭제',
-          disabled: a.items.length <= 1 ? 'disabled' : null,
+          disabled: a.items.length <= MIN_ITEMS ? 'disabled' : null,
+          title: a.items.length <= MIN_ITEMS ? '이 자리는 최소 ' + MIN_ITEMS + '장을 남겨 두셔야 합니다.' : null,
           onclick: function () { removeGalleryDialog(a, idx); }
         }) : null,
         canEdit ? el('div', { class: 'ia-move' }, [
@@ -853,7 +857,10 @@
     ]);
     confirmBox('이미지 삭제', body, '삭제하기').then(function (ok) {
       if (!ok) return;
-      if (!S.doc.removeGalleryItem(a.id, idx)) { toast('마지막 한 장은 지울 수 없습니다.', 'err'); return; }
+      if (!S.doc.removeGalleryItem(a.id, idx)) {
+        toast('이 자리는 최소 ' + MIN_ITEMS + '장을 남겨 두셔야 합니다. 더 줄이려면 제작사에 문의해 주세요.', 'err', 6000);
+        return;
+      }
       afterGalleryChange('삭제되었습니다. 발행하면 홈페이지에 반영됩니다.');
     });
   }

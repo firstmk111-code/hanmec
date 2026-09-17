@@ -730,18 +730,23 @@
   function elChildren(node) {
     return node.children.filter(function (c) { return c.tag !== '#text'; });
   }
-  /** 노드 안의 이미지들 (img 태그 + style 배경) */
+  /** 노드 안의 이미지들 (img 태그 + style 배경). depth 는 그 이미지가 몇 겹 안쪽에 있는지. */
   function imagesInside(node, html) {
     var out = [];
-    (function walk(n) {
+    (function walk(n, depth) {
       if (n.tag === 'img') {
         var s = attrOf(n, 'src');
-        if (s && /^images\//.test(s)) out.push({ node: n, src: s });
+        if (s && /^images\//.test(s)) out.push({ node: n, src: s, depth: depth });
       }
-      elChildren(n).forEach(walk);
-    })(node);
+      elChildren(n).forEach(function (c) { walk(c, depth + 1); });
+    })(node, 0);
     return out;
   }
+
+  /* 한 항목 안에서 이미지가 이보다 더 깊이 들어가 있으면
+     그건 낱개 항목이 아니라 여러 항목을 담는 바깥 껍데기로 본다.
+     (인증현황 탭처럼 탭 > 그리드 > 카드 > 사진 구조를 갤러리로 오인하지 않기 위함) */
+  var MAX_IMG_DEPTH = 3;
   /** 원문 구간의 순수 글자 */
   function sliceText(html, a, b) {
     return html.slice(a, b).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
@@ -781,8 +786,11 @@
       Object.keys(byShape).forEach(function (shape) {
         var group = byShape[shape];
         if (group.length < 2) return;
-        // 모든 형제가 이미지를 정확히 1장씩 가져야 갤러리로 본다
-        var ok = group.every(function (g) { return imagesInside(g.node, html).length === 1; });
+        // 모든 형제가 이미지를 정확히 1장씩, 그것도 얕은 곳에 가지고 있어야 갤러리로 본다
+        var ok = group.every(function (g) {
+          var imgs = imagesInside(g.node, html);
+          return imgs.length === 1 && imgs[0].depth <= MAX_IMG_DEPTH;
+        });
         if (!ok) return;
         // 붙어 있어야 한다. 사이에 다른 것이 끼어 있으면 통째로 다시 쓸 때 그것이 지워진다.
         for (var c = 1; c < group.length; c++) if (group[c].at !== group[c - 1].at + 1) return;
@@ -816,7 +824,19 @@
       kids.forEach(function (k, i) { walk(k, path.concat(i)); });
     })(root, []);
 
-    return found;
+    /* 바깥 껍데기를 갤러리로 오인하지 않게 걸러낸다.
+       예) 인증현황의 탭(.tabpane) 세 개가 각각 이미지 1장만 남으면
+           "탭이 3개 늘어선 갤러리" 처럼 보이는데, 여기에 항목을 더하면
+           탭 자체가 복제되어 페이지가 깨진다.
+       그래서 "안쪽에 다른 갤러리를 품고 있는 것" 은 갤러리로 치지 않는다. */
+    return found.filter(function (g) {
+      return !found.some(function (other) {
+        if (other === g) return false;
+        return g.items.some(function (it) {
+          return other.spanStart > it.start && other.spanEnd <= it.end;
+        });
+      });
+    });
   }
 
   /** 이 자리 앞쪽에서 가장 가까운 제목 */
@@ -1021,9 +1041,15 @@
     return this.writeGallery(id, items);
   };
 
+  /* 두 장 아래로는 줄이지 않는다.
+     한 장만 남으면 "여러 개가 늘어선 자리" 로 더 이상 인식되지 않아
+     관리자에서 그 자리를 다룰 수 없게 되기 때문이다. */
+  SiteDoc.MIN_GALLERY_ITEMS = 2;
+
   SiteDoc.prototype.removeGalleryItem = function (id, index) {
     var items = this.galleryItems(id);
-    if (index < 0 || index >= items.length || items.length <= 1) return false;
+    if (index < 0 || index >= items.length) return false;
+    if (items.length <= SiteDoc.MIN_GALLERY_ITEMS) return false;
     items.splice(index, 1);
     return this.writeGallery(id, items);
   };
