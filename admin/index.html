@@ -75,6 +75,8 @@
       <a data-nav="perf"><span class="ic">★</span> 주요실적 관리 <em class="n" id="nPerf" hidden></em></a>
       <a data-nav="detail"><span class="ic">▤</span> 제품상세 <em class="n" id="nDetail" hidden></em></a>
       <a data-nav="board"><span class="ic">☰</span> 공지사항 · 자료실 <em class="n" id="nBoard" hidden></em></a>
+      <div class="grp">문의</div>
+      <a data-nav="inq"><span class="ic">✉</span> 문의함 <em class="n red" id="nInq" hidden></em></a>
       <div class="grp">사이트 설정</div>
       <a data-nav="info"><span class="ic">☏</span> 회사정보 · 푸터 <em class="n" id="nInfo" hidden></em></a>
       <a data-nav="seo"><span class="ic">◎</span> SEO 설정 <em class="n" id="nSeo" hidden></em></a>
@@ -91,13 +93,22 @@
     <button class="menu-toggle" id="menuToggle" title="메뉴">☰</button>
     <h2 id="pageTitle">대시보드</h2>
     <div class="sp"></div>
-    <span class="draft-mark" id="draftMark" hidden></span>
-    <span class="chg none" id="chgLabel">변경사항 없음</span>
-    <button class="btn ghost" id="discardBtn" disabled>변경 취소</button>
-    <button class="btn primary" id="publishBtn" disabled>저장하고 발행</button>
+    <span id="topActions" class="row" style="gap:8px;align-items:center">
+      <span class="draft-mark" id="draftMark" hidden></span>
+      <span class="chg none" id="chgLabel">변경사항 없음</span>
+      <button class="btn ghost" id="discardBtn" disabled>변경 취소</button>
+      <button class="btn primary" id="publishBtn" disabled>저장하고 발행</button>
+    </span>
   </header>
 
   <main>
+
+    <!-- 홈페이지 내용을 못 불러왔을 때 (문의함만 사용 가능) -->
+    <div class="limit-bar" id="limitBar" hidden>
+      <b>홈페이지 편집 기능을 잠시 쓸 수 없습니다.</b>
+      <span class="msg"></span>
+      <span class="sub">문의함은 정상적으로 확인하실 수 있습니다. 편집이 필요하시면 제작사에 문의해 주세요.</span>
+    </div>
 
     <!-- ---------- 대시보드 ---------- -->
     <section class="panel on" data-panel="dash">
@@ -387,6 +398,24 @@
           </label>
         </div>
         <button class="btn primary" id="seoApply">SEO 설정 적용</button>
+      </div>
+    </section>
+
+    <!-- ---------- 문의함 ---------- -->
+    <section class="panel" data-panel="inq">
+      <div class="card">
+        <h3>문의함</h3>
+        <p class="desc">
+          홈페이지 <b>고객지원 › 온라인 문의</b> 로 접수된 내용입니다.
+          처리 상태를 바꿔 가며 관리하시면 됩니다. 이 화면의 내용은 홈페이지에 나타나지 않습니다.
+        </p>
+        <div class="img-toolbar">
+          <div class="tabs" id="inqTabs" style="margin:0"></div>
+          <div class="sp" style="flex:1"></div>
+          <input type="text" class="input" id="inqSearch" placeholder="이름·회사·연락처·내용 검색" style="max-width:260px">
+          <button class="btn" id="inqReload">새로고침</button>
+        </div>
+        <div id="inqList"><div class="empty">불러오는 중…</div></div>
       </div>
     </section>
 

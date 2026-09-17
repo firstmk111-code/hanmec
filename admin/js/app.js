@@ -61,14 +61,16 @@
   }
   function esc(s) { return SiteDoc.escapeHtml(s); }
 
-  function confirmBox(title, bodyNode, okLabel) {
+  /** readOnly 로 부르면 '취소' 없이 닫기 버튼만 둔다 (읽기만 하는 창) */
+  function confirmBox(title, bodyNode, okLabel, readOnly) {
     return new Promise(function (resolve) {
       var box = el('div', { class: 'modal' }, [
         el('div', { class: 'modal-box' }, [
           el('header', { text: title }),
           el('div', { class: 'body' }, [bodyNode]),
           el('footer', {}, [
-            el('button', { class: 'btn', text: '취소', onclick: function () { host.innerHTML = ''; resolve(false); } }),
+            readOnly ? null
+              : el('button', { class: 'btn', text: '취소', onclick: function () { host.innerHTML = ''; resolve(false); } }),
             el('button', { class: 'btn primary', text: okLabel || '확인', onclick: function () { host.innerHTML = ''; resolve(true); } })
           ])
         ])
@@ -125,8 +127,13 @@
         $('#loginServer').hidden = false;
         $('#userInput').value = be.user || 'admin';
         setTimeout(function () { $('#passInput').focus(); }, 60);
-        // 이미 로그인된 세션이 있으면 바로 들어간다
-        be.verify().then(function () { return enterAdmin(); }).catch(function () {});
+        // 이미 로그인된 세션이 있으면 바로 들어간다.
+        // 세션이 없을 때는 조용히 로그인 화면을 두고, 그 뒤 단계에서 난 오류는 화면에 보여준다.
+        be.verify()
+          .then(function () {
+            return enterAdmin().catch(function (e) { busy(false); loginError(e.message); });
+          })
+          .catch(function () { /* 세션 없음 — 로그인 화면 그대로 */ });
       } else {
         $('#loginToken').hidden = false;
         $('#tokenHelp').hidden = false;
@@ -161,7 +168,32 @@
       initAccount();
       busy(false);
       return offerDraft();     // 발행 안 하고 남겨둔 작업이 있으면 이어서 할지 물어본다
+    }).catch(function (e) {
+      /* 홈페이지 내용을 못 불러와도 문의함은 홈페이지와 무관하므로 그것만은 쓸 수 있게 연다.
+         (GitHub 연결이 끊기거나 토큰이 만료돼도 들어온 문의는 확인해야 하기 때문) */
+      if (!S.be || S.be.mode !== 'server') throw e;
+      enterInquiryOnly(e.message);
     });
+  }
+
+  function enterInquiryOnly(msg) {
+    S.limited = true;
+    busy(false);
+    $('#login').hidden = true;
+    $('#shell').classList.add('on');
+
+    // 홈페이지 편집 기능은 감춘다 (내용을 못 불러왔으므로 쓸 수 없다)
+    $$('[data-nav]').forEach(function (a) { if (a.dataset.nav !== 'inq') a.hidden = true; });
+    $$('.grp').forEach(function (g) { if (g.textContent.trim() !== '문의') g.hidden = true; });
+    var bar = $('#topActions');
+    if (bar) bar.hidden = true;
+
+    var b = $('#limitBar');
+    if (b) {
+      b.hidden = false;
+      b.querySelector('.msg').textContent = msg || '홈페이지 내용을 불러오지 못했습니다.';
+    }
+    go('inq');
   }
 
   function submitLogin(silent) {
@@ -349,6 +381,25 @@
 
   function loadSite() {
     busy(true, '홈페이지 내용을 불러오는 중…');
+    // 오래 걸리면 멈춘 것처럼 보이므로 시간을 끊고 안내한다
+    var timer = setTimeout(function () {
+      busy(true, '홈페이지 내용을 불러오는 중… (평소보다 오래 걸리고 있습니다)');
+    }, 8000);
+    return withTimeout(doLoadSite(), 30000, '홈페이지 내용을 불러오지 못했습니다. 잠시 후 새로고침해 주세요.')
+      .then(function (r) { clearTimeout(timer); return r; })
+      .catch(function (e) { clearTimeout(timer); throw e; });
+  }
+
+  function withTimeout(promise, ms, msg) {
+    return new Promise(function (resolve, reject) {
+      var done = false;
+      var t = setTimeout(function () { if (!done) { done = true; reject(new Error(msg)); } }, ms);
+      promise.then(function (v) { if (!done) { done = true; clearTimeout(t); resolve(v); } },
+        function (e) { if (!done) { done = true; clearTimeout(t); reject(e); } });
+    });
+  }
+
+  function doLoadSite() {
     return S.be.headSha().then(function (sha) {
       S.headSha = sha;
       return S.be.getFile(CONFIG.file, sha);
@@ -2311,11 +2362,209 @@
     });
   }
 
+  /* ===================== 문의함 =====================
+     홈페이지 문의 폼이 보낸 내용을 서버(Cloudflare)에서 받아 보여준다.
+     홈페이지 파일과는 무관하므로 "발행"과 상관없이 바로 반영된다. */
+
+  var INQ_ST = [
+    { v: 'new', label: '신규', cls: 'warn' },
+    { v: 'doing', label: '진행중', cls: '' },
+    { v: 'done', label: '완료', cls: 'ok' }
+  ];
+  var inqAll = [];
+  var inqTab = 'all';
+
+  function inqApi(path, opt) {
+    return fetch('/api/' + path, Object.assign({
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }
+    }, opt || {})).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        if (!r.ok) throw new Error(d.error || ('오류 ' + r.status));
+        return d;
+      });
+    });
+  }
+
+  function loadInquiries() {
+    var host = $('#inqList');
+    host.innerHTML = '<div class="empty">불러오는 중…</div>';
+    if (S.be && S.be.mode === 'preview') {
+      host.innerHTML = '<div class="empty">미리보기 모드에서는 문의함을 볼 수 없습니다.</div>';
+      return;
+    }
+    inqApi('inquiries?limit=300').then(function (d) {
+      inqAll = d.items || [];
+      updateInqBadge(d.newCount || 0);
+      renderInq();
+    }).catch(function (e) {
+      host.innerHTML = '<div class="empty">문의를 불러오지 못했습니다.<br><small>' + esc(e.message) + '</small></div>';
+    });
+  }
+
+  function updateInqBadge(n) {
+    var b = $('#nInq');
+    if (!b) return;
+    b.textContent = n;
+    b.hidden = !n;
+  }
+
+  function renderInq() {
+    var q = ($('#inqSearch').value || '').trim().toLowerCase();
+    var counts = { all: inqAll.length };
+    INQ_ST.forEach(function (s) { counts[s.v] = inqAll.filter(function (x) { return x.status === s.v; }).length; });
+
+    var tabs = $('#inqTabs');
+    tabs.innerHTML = '';
+    [{ v: 'all', label: '전체' }].concat(INQ_ST).forEach(function (t) {
+      tabs.appendChild(el('button', {
+        class: inqTab === t.v ? 'on' : '',
+        html: esc(t.label) + '<span class="c">' + (counts[t.v] || 0) + '</span>',
+        onclick: function () { inqTab = t.v; renderInq(); }
+      }));
+    });
+
+    var list = inqAll.filter(function (x) {
+      if (inqTab !== 'all' && x.status !== inqTab) return false;
+      if (q && (x.name + ' ' + x.company + ' ' + x.phone + ' ' + x.email + ' ' + x.solution + ' ' + x.excerpt)
+        .toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+
+    var host = $('#inqList');
+    host.innerHTML = '';
+    if (!list.length) {
+      host.innerHTML = '<div class="empty">' + (inqAll.length ? '조건에 맞는 문의가 없습니다.' : '아직 접수된 문의가 없습니다.') + '</div>';
+      return;
+    }
+
+    var tbl = el('table', { class: 'inq-tbl' });
+    tbl.appendChild(el('thead', {}, [el('tr', {}, [
+      el('th', { text: '접수일', style: 'width:104px' }),
+      el('th', { text: '회사 / 담당자', style: 'width:180px' }),
+      el('th', { text: '연락처', style: 'width:180px' }),
+      el('th', { text: '관심 솔루션 / 문의 내용' }),
+      el('th', { text: '상태', style: 'width:104px' }),
+      el('th', { text: '', style: 'width:64px' })
+    ])]));
+
+    var tb = el('tbody');
+    list.forEach(function (it) { tb.appendChild(inqRow(it)); });
+    tbl.appendChild(tb);
+    host.appendChild(tbl);
+  }
+
+  function inqRow(it) {
+    var st = INQ_ST.filter(function (s) { return s.v === it.status; })[0] || INQ_ST[0];
+
+    var sel = el('select', { class: 'input sm' });
+    INQ_ST.forEach(function (s) {
+      var o = el('option', { value: s.v, text: s.label });
+      if (s.v === it.status) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', function () {
+      inqApi('inquiries/' + encodeURIComponent(it.id), {
+        method: 'PATCH', body: JSON.stringify({ status: sel.value })
+      }).then(function () {
+        it.status = sel.value;
+        updateInqBadge(inqAll.filter(function (x) { return x.status === 'new'; }).length);
+        renderInq();
+        toast('상태를 “' + (INQ_ST.filter(function (s) { return s.v === sel.value; })[0] || {}).label + '” 로 바꿨습니다.', 'ok');
+      }).catch(function (e) { toast(e.message, 'err'); sel.value = it.status; });
+    });
+
+    var tr = el('tr', { class: it.status === 'new' ? 'is-new' : '' }, [
+      el('td', { class: 'inq-d', text: fmtInqDate(it.createdAt) }),
+      el('td', {}, [
+        el('div', { class: 'inq-co', text: it.company || '(회사명 없음)' }),
+        el('div', { class: 'inq-nm', text: it.name })
+      ]),
+      el('td', {}, [
+        el('div', { class: 'inq-ph', text: it.phone }),
+        el('div', { class: 'inq-em', text: it.email })
+      ]),
+      el('td', {}, [
+        it.solution ? el('div', { class: 'inq-sol', text: it.solution }) : null,
+        el('div', { class: 'inq-msg', text: it.excerpt || '(내용 없음)' }),
+        el('button', { class: 'inq-more', text: '전체 내용 보기', onclick: function () { openInquiry(it); } })
+      ]),
+      el('td', {}, [sel]),
+      el('td', {}, [
+        el('button', {
+          class: 'btn sm danger', text: '삭제',
+          onclick: function () { removeInquiryDialog(it); }
+        })
+      ])
+    ]);
+    return tr;
+  }
+
+  function fmtInqDate(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    return d.getFullYear() + '.' + pad(d.getMonth() + 1) + '.' + pad(d.getDate()) +
+      '\n' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function openInquiry(it) {
+    busy(true, '문의 내용을 불러오는 중…');
+    inqApi('inquiries/' + encodeURIComponent(it.id)).then(function (d) {
+      busy(false);
+      var x = d.item || {};
+      var rows = [
+        ['접수일', new Date(x.createdAt).toLocaleString('ko-KR')],
+        ['이름', x.name],
+        ['회사 / 기관', x.company || '-'],
+        ['연락처', x.phone],
+        ['이메일', x.email],
+        ['관심 솔루션', x.solution || '-']
+      ];
+      var body = el('div', {}, [
+        el('div', { class: 'inq-view' }, rows.map(function (r) {
+          return el('div', { class: 'inq-vrow' }, [
+            el('div', { class: 'k', text: r[0] }),
+            el('div', { class: 'v', text: r[1] || '-' })
+          ]);
+        })),
+        el('div', { class: 'inq-vbody' }, [
+          el('div', { class: 'k', text: '문의 내용' }),
+          el('div', { class: 'v', text: x.message || '' })
+        ])
+      ]);
+      confirmBox('문의 상세', body, '닫기', true);
+    }).catch(function (e) { busy(false); toast(e.message, 'err'); });
+  }
+
+  function removeInquiryDialog(it) {
+    var body = el('div', {}, [
+      el('p', {}, [
+        document.createTextNode('아래 문의를 삭제합니다.')
+      ]),
+      el('div', { class: 'inq-view', style: 'margin-top:12px' }, [
+        el('div', { class: 'inq-vrow' }, [el('div', { class: 'k', text: '접수일' }), el('div', { class: 'v', text: new Date(it.createdAt).toLocaleString('ko-KR') })]),
+        el('div', { class: 'inq-vrow' }, [el('div', { class: 'k', text: '담당자' }), el('div', { class: 'v', text: (it.company ? it.company + ' · ' : '') + it.name })]),
+        el('div', { class: 'inq-vrow' }, [el('div', { class: 'k', text: '연락처' }), el('div', { class: 'v', text: it.phone })])
+      ]),
+      el('p', { class: 'hint', style: 'margin-top:14px', text: '삭제하면 되돌릴 수 없습니다.' })
+    ]);
+    confirmBox('문의 삭제', body, '삭제하기').then(function (ok) {
+      if (!ok) return;
+      inqApi('inquiries/' + encodeURIComponent(it.id), { method: 'DELETE' }).then(function () {
+        inqAll = inqAll.filter(function (x) { return x.id !== it.id; });
+        updateInqBadge(inqAll.filter(function (x) { return x.status === 'new'; }).length);
+        renderInq();
+        toast('삭제되었습니다.');
+      }).catch(function (e) { toast(e.message, 'err'); });
+    });
+  }
+
   /* ===================== 내비게이션 ===================== */
 
   var TITLES = {
     dash: '대시보드', images: '이미지 관리', text: '텍스트 관리', perf: '주요실적 관리',
-    detail: '제품상세', board: '공지사항 · 자료실', info: '회사정보 · 푸터', seo: 'SEO 설정', history: '발행 이력',
+    detail: '제품상세', board: '공지사항 · 자료실', inq: '문의함',
+    info: '회사정보 · 푸터', seo: 'SEO 설정', history: '발행 이력',
     account: '비밀번호 변경'
   };
 
@@ -2326,6 +2575,7 @@
     $('#side').classList.remove('open');
     if (name === 'history') loadCommits($('#histList'), 30);
     if (name === 'dash') loadCommits($('#dashCommits'), 6);
+    if (name === 'inq') loadInquiries();
     window.scrollTo(0, 0);
   }
 
@@ -2342,6 +2592,9 @@
     $('#imgFPage').addEventListener('change', function () { $('#imgFArea').value = ''; $('#imgFCat').value = ''; renderImageGrid(); });
     $('#imgFArea').addEventListener('change', function () { $('#imgFCat').value = ''; renderImageGrid(); });
     $('#imgFCat').addEventListener('change', renderImageGrid);
+
+    $('#inqSearch').addEventListener('input', renderInq);
+    $('#inqReload').addEventListener('click', loadInquiries);
 
     $('#txtPage').addEventListener('change', function () { S.curPage = this.value; renderText(); });
     $('#txtShowNav').addEventListener('change', renderText);
