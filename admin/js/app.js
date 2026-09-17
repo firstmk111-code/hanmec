@@ -2407,6 +2407,9 @@
 
   var ARCH_TYPES = ['카탈로그', '제품 사양서', '제품 설명서', '도면', '기타'];
   var ARCH_VIEWABLE = /\.(pdf|jpe?g|png)$/i;
+  /* 자료실 고정 표시 — 옆에 있는 .arch-type 칩과 같은 크기·모양, 색만 진하게 */
+  var ARC_FIX = 'display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:6px;' +
+    'font-size:13px;font-weight:700;white-space:nowrap;background:#1064a7;color:#fff';
 
   function archiveModel() {
     var html = S.doc.pageHtml('archive');
@@ -2455,7 +2458,10 @@
     var thumb = c.img
       ? '<div class="arch-thumb"><img src="' + esc(c.img) + '" alt="' + esc(c.title) + '" loading="lazy"></div>'
       : '<div class="arch-thumb is-ph"><span class="arch-ph">' + esc(ext || 'FILE') + '</span></div>';
-    var top = (c.type ? '<span class="arch-type">' + esc(c.type) + '</span>' : '') +
+    // 고정한 자료임을 방문자도 알아볼 수 있게 표시한다.
+    // 홈페이지 CSS 를 건드리지 않도록, 옆의 유형 칩과 같은 모양을 직접 입힌다.
+    var top = (c.pin ? '<span class="arch-fix" style="' + ARC_FIX + '">고정</span>' : '') +
+      (c.type ? '<span class="arch-type">' + esc(c.type) + '</span>' : '') +
       (c.product ? '<span class="arch-prod">' + esc(c.product) + '</span>' : '') +
       (c.date ? '<span class="arch-date">' + esc(c.date) + '</span>' : '');
     var meta = (ext ? '<span class="arch-ext">' + esc(ext) + '</span>' : '') +
