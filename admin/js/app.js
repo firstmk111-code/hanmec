@@ -2342,69 +2342,97 @@
     renderNotice();
   });
 
-  /* ---------- 자료실 ---------- */
+  /* ---------- 자료실 ----------
+     카드 한 장이 자료 하나다. 화면에 보이는 값(자료명·설명·유형·제품·형식·용량·등록일)은 카드 글자에서,
+     보이지 않는 값(파일 경로·원래 파일명·링크·고정)은 data- 속성에서 읽는다. */
+
+  var ARCH_TYPES = ['카탈로그', '제품 사양서', '제품 설명서', '도면', '기타'];
+  var ARCH_VIEWABLE = /\.(pdf|jpe?g|png)$/i;
 
   function archiveModel() {
     var html = S.doc.pageHtml('archive');
     var grid = findNode(html, function (n) { return /(^|\s)arch-grid(\s|$)/.test(SiteDoc.attrOf(n, 'class') || ''); });
     if (!grid) return null;
-    var cards = grid.children.filter(function (c) { return c.tag === 'a'; }).map(function (a) {
-      var img = findNode(html.slice(a.start, a.end), function (n) { return n.tag === 'img'; });
-      var titleN = null, dateN = null;
+    var cards = grid.children.filter(function (c) {
+      return c.tag !== '#text' && /(^|\s)arch-card(\s|$)/.test(SiteDoc.attrOf(c, 'class') || '');
+    }).map(function (card) {
+      var part = {}, img = null;
       (function walk(n) {
         n.children.forEach(function (c) {
-          var cls = SiteDoc.attrOf(c, 'class') || '';
-          if (/arch-title/.test(cls)) titleN = c;
-          if (/arch-date/.test(cls)) dateN = c;
+          if (c.tag === '#text') return;
+          if (c.tag === 'img' && !img) img = c;
+          var m = /(^|\s)arch-(title|desc|type|prod|date|ext|size)(\s|$)/.exec(SiteDoc.attrOf(c, 'class') || '');
+          if (m && part[m[2]] === undefined) part[m[2]] = SiteDoc.textOf(c).trim();
           walk(c);
         });
-      })(a);
-      var file = SiteDoc.attrOf(a, 'data-file') || '';
-      var href = SiteDoc.attrOf(a, 'href') || '';
-      // 첨부가 있으면 href 에 그 파일이 들어가 있다. 링크 칸에는 보이지 않게 한다.
-      if (file && href === file) href = '';
-      if (href === 'javascript:void(0)') href = '';
+      })(card);
+      function attr(k) { return SiteDoc.attrOf(card, k) || ''; }
+      var file = attr('data-file');
+      var link = attr('data-link');
+      // 예전 카드는 <a href> 자체가 첨부/링크였다
+      if (!link && card.tag === 'a') {
+        var h = attr('href');
+        if (h !== file && h !== 'javascript:void(0)') link = h;
+      }
       return {
-        href: href,
-        img: img ? SiteDoc.attrOf(img, 'src') : '',
-        title: titleN ? SiteDoc.textOf(titleN).trim() : '',
-        date: dateN ? SiteDoc.textOf(dateN).trim() : '',
-        pin: SiteDoc.attrOf(a, 'data-pin') === '1',
-        file: file,
-        fileName: SiteDoc.attrOf(a, 'data-name') || ''
+        title: part.title || '', desc: part.desc || '',
+        type: part.type || attr('data-type'), product: part.prod || '',
+        date: part.date || '',
+        img: img ? (SiteDoc.attrOf(img, 'src') || '') : '',
+        pin: attr('data-pin') === '1',
+        file: file, fileName: attr('data-name'),
+        ext: part.ext || '', size: part.size || '',
+        href: link
       };
     });
     return { node: grid, cards: cards };
   }
 
-  var ARC_PIN = 'position:absolute;top:10px;left:10px;z-index:2;background:#1064A7;color:#fff;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px';
-  var ARC_FILE = 'display:inline-flex;align-items:center;gap:4px;margin-top:6px;font-size:12px;color:#1064A7;font-weight:600';
+  function archiveCardHtml(c) {
+    var ext = String(c.ext || '').trim().toUpperCase();
+    var size = String(c.size || '').trim();
+    var href = String(c.href || '').trim();
+
+    var thumb = c.img
+      ? '<div class="arch-thumb"><img src="' + esc(c.img) + '" alt="' + esc(c.title) + '" loading="lazy"></div>'
+      : '<div class="arch-thumb is-ph"><span class="arch-ph">' + esc(ext || 'FILE') + '</span></div>';
+    var top = (c.type ? '<span class="arch-type">' + esc(c.type) + '</span>' : '') +
+      (c.product ? '<span class="arch-prod">' + esc(c.product) + '</span>' : '') +
+      (c.date ? '<span class="arch-date">' + esc(c.date) + '</span>' : '');
+    var meta = (ext ? '<span class="arch-ext">' + esc(ext) + '</span>' : '') +
+      (size ? '<span class="arch-size">' + esc(size) + '</span>' : '');
+
+    // 첨부 파일이 있으면 내려받기(PDF·이미지는 미리보기도), 없으면 입력한 링크로 이동
+    var acts;
+    if (c.file) {
+      acts = (ARCH_VIEWABLE.test(c.file) ? '<a class="arch-view" href="' + esc(c.file) + '" target="_blank" rel="noopener">미리보기</a>' : '') +
+        '<a class="arch-dl" href="' + esc(c.file) + '" download' + (c.fileName ? '="' + esc(c.fileName) + '"' : '') + '>다운로드</a>';
+    } else if (href) {
+      acts = '<a class="arch-dl is-link" href="' + esc(href) + '"' + (/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : '') + '>바로가기</a>';
+    } else {
+      acts = '<span class="arch-dl is-off">준비 중</span>';
+    }
+
+    return '<article class="arch-card"' +
+      (c.type ? ' data-type="' + esc(c.type) + '"' : '') +
+      (c.pin ? ' data-pin="1"' : '') +
+      (c.file ? ' data-file="' + esc(c.file) + '" data-name="' + esc(c.fileName || '') + '"' : '') +
+      (href ? ' data-link="' + esc(href) + '"' : '') + '>' +
+      thumb +
+      '<div class="arch-body"><div class="arch-top">' + top + '</div>' +
+      '<h3 class="arch-title">' + esc(c.title) + '</h3>' +
+      (c.desc ? '<p class="arch-desc">' + esc(c.desc) + '</p>' : '') + '</div>' +
+      '<div class="arch-foot"><div class="arch-meta">' + meta + '</div><div class="arch-acts">' + acts + '</div></div>' +
+      '</article>';
+  }
 
   function archiveWrite(cards) {
     var m = archiveModel();
     if (!m) return;
     // 고정한 자료를 앞으로
     var sorted = cards.filter(function (c) { return c.pin; }).concat(cards.filter(function (c) { return !c.pin; }));
-
-    var body = sorted.map(function (c) {
-      // 첨부가 있으면 그 파일을 받도록, 없으면 입력한 링크로 이동
-      var target = c.file || c.href || '';
-      var isUrl = /^https?:/.test(target);
-      return '<a href="' + esc(target || 'javascript:void(0)') + '"' +
-        (isUrl ? ' target="_blank" rel="noopener"' : '') +
-        (c.file ? ' download' : '') +
-        (c.pin ? ' data-pin="1"' : '') +
-        (c.file ? ' data-file="' + esc(c.file) + '" data-name="' + esc(c.fileName || '') + '"' : '') +
-        ' class="arch-card"' + (c.pin ? ' style="position:relative"' : '') + '>' +
-        (c.pin ? '<span style="' + ARC_PIN + '">고정</span>' : '') +
-        '<div class="arch-thumb"><img src="' + esc(c.img || '') + '" alt="' + esc(c.title) + '" loading="lazy"></div>' +
-        '<div class="arch-body"><div class="arch-title">' + esc(c.title) + '</div>' +
-        '<div class="arch-date">' + esc(c.date) + '</div>' +
-        (c.file ? '<div style="' + ARC_FILE + '">↓ 자료 받기</div>' : '') +
-        '</div></a>';
-    }).join('');
     var html = S.doc.pageHtml('archive');
-    S.doc.setPageHtml('archive', html.slice(0, m.node.contentStart) + body + html.slice(m.node.contentEnd));
+    S.doc.setPageHtml('archive', html.slice(0, m.node.contentStart) + sorted.map(archiveCardHtml).join('') + html.slice(m.node.contentEnd));
     refreshBlocks('archive');
     S.changed.board++;
     updateChangeUI();
@@ -2415,36 +2443,117 @@
     var host = $('#archList');
     host.innerHTML = '';
     if (!m) { host.innerHTML = '<div class="empty">자료실 목록을 찾지 못했습니다.</div>'; return; }
+    if (!m.cards.length) { host.innerHTML = '<div class="empty">등록된 자료가 없습니다.</div>'; return; }
+
+    // 관련 제품 입력칸 추천 목록: 제품소개의 분류와 제품명
+    var suggest = el('datalist', { id: 'archProdList' });
+    var seen = {};
+    S.doc.productsData().forEach(function (p) {
+      [p.cat, p.name].forEach(function (v) {
+        if (v && !seen[v]) { seen[v] = 1; suggest.appendChild(el('option', { value: v })); }
+      });
+    });
+    host.appendChild(suggest);
+
+    function save(i, patch, redraw) {
+      var cards = archiveModel().cards;
+      Object.keys(patch).forEach(function (k) { cards[i][k] = patch[k]; });
+      archiveWrite(cards);
+      if (redraw) renderArchive();
+    }
+    // 버튼이 든 칸은 label 로 감싸지 않는다 (글자를 눌렀을 때 버튼이 눌리는 것을 막기 위해)
+    function field(label, control, cls) {
+      var tag = /^(INPUT|SELECT|TEXTAREA)$/.test(control.tagName) ? 'label' : 'div';
+      return el(tag, { class: 'field' + (cls ? ' ' + cls : '') }, [el('span', { text: label }), control]);
+    }
 
     m.cards.forEach(function (c, i) {
       function inp(key, ph) {
         var e = el('input', { class: 'input', value: c[key] || '', placeholder: ph });
         e.addEventListener('change', function () {
-          var cards = archiveModel().cards;
-          cards[i][key] = e.value;
-          archiveWrite(cards);
+          var p = {};
+          p[key] = e.value.trim();
+          save(i, p);
         });
         return e;
       }
-      var ch = S.imgChanges[c.img];
+      var ch = S.imgChanges[c.img] || S.imgChanges['__new__' + c.img];
 
       /* 상단 고정 */
       var pin = el('label', { class: 'pin-box' + (c.pin ? ' on' : '') });
       var pinChk = el('input', { type: 'checkbox' });
       pinChk.checked = !!c.pin;
       pinChk.addEventListener('change', function () {
-        var cards = archiveModel().cards;
-        cards[i].pin = pinChk.checked;
-        archiveWrite(cards); renderArchive();
+        save(i, { pin: pinChk.checked }, true);
         toast(pinChk.checked ? '맨 앞에 고정했습니다.' : '고정을 해제했습니다.', 'ok');
       });
       pin.appendChild(pinChk);
       pin.appendChild(el('span', { text: '고정' }));
 
+      /* 자료 유형 */
+      var typeSel = el('select', { class: 'input' });
+      var types = [''].concat(ARCH_TYPES);
+      if (c.type && types.indexOf(c.type) < 0) types.push(c.type);
+      types.forEach(function (t) {
+        var o = el('option', { value: t, text: t || '선택 안 함' });
+        o.selected = t === (c.type || '');
+        typeSel.appendChild(o);
+      });
+      typeSel.addEventListener('change', function () { save(i, { type: typeSel.value }); });
+
+      /* 관련 제품 · 카테고리 */
+      var prod = inp('product', '예: 주차관제, 차량인식기');
+      prod.setAttribute('list', 'archProdList');
+
+      /* 간단한 설명 */
+      var desc = el('textarea', { class: 'input', rows: '2', placeholder: '자료를 한두 줄로 소개해 주세요. (선택)' });
+      desc.value = c.desc || '';
+      desc.addEventListener('change', function () { save(i, { desc: desc.value.replace(/\s+/g, ' ').trim() }); });
+
+      /* 표지(썸네일) */
+      var cover = el('div', { class: 'thumbs arch-cover' }, [
+        c.img ? el('div', { class: 't' }, [
+          el('img', { src: ch ? ch.previewUrl : assetUrl(c.img), alt: '' }),
+          el('button', { text: '×', title: '표지 빼기', onclick: function () { save(i, { img: '' }, true); } })
+        ]) : null,
+        el('div', { class: 'add' + (c.img ? ' sm' : ''), text: c.img ? '표지 변경' : '+ 표지 이미지', onclick: function () { addArchiveImage(i); } })
+      ]);
+
+      /* 첨부 파일 — 올리면 형식·용량을 자동으로 채운다 */
+      var fileCell = el('div', { class: 'att' }, c.file ? [
+        el('a', {
+          class: 'att-name', href: assetUrl(c.file), target: '_blank', rel: 'noopener',
+          text: c.fileName || c.file.split('/').pop()
+        }),
+        el('button', {
+          class: 'att-x', text: '×', title: '첨부 삭제',
+          onclick: function () {
+            save(i, { file: '', fileName: '', ext: '', size: '' }, true);
+            toast('첨부를 뺐습니다.');
+          }
+        })
+      ] : [
+        el('button', {
+          class: 'btn sm', text: '+ 파일 올리기',
+          onclick: function () {
+            pickAttachment().then(function (f) {
+              if (!f) return;
+              var dot = f.name.lastIndexOf('.');
+              save(i, {
+                file: f.path, fileName: f.name,
+                ext: dot > 0 ? f.name.slice(dot + 1).toUpperCase() : '',
+                size: fmtSize(f.size)
+              }, true);
+              toast('“' + f.name + '” 을 붙였습니다. 파일 형식·용량은 자동으로 채웠고, 발행하면 내려받을 수 있습니다.', 'ok', 5000);
+            });
+          }
+        })
+      ]);
+
       host.appendChild(el('div', { class: 'item' + (c.pin ? ' is-pin' : '') }, [
         el('div', { class: 'ih' }, [
           el('span', { class: 'idx', text: String(i + 1) }),
-          el('div', { style: 'flex:1' }, [inp('title', '자료 제목')]),
+          el('div', { style: 'flex:1' }, [inp('title', '자료명')]),
           pin,
           el('button', { class: 'btn sm', text: '▲', onclick: function () {
             if (i === 0) return;
@@ -2465,52 +2574,17 @@
             archiveWrite(cards); renderArchive();
           } })
         ]),
-        el('div', { class: 'row', style: 'align-items:flex-start' }, [
-          el('div', { class: 'thumbs' }, [
-            c.img ? el('div', { class: 't' }, [el('img', { src: ch ? ch.previewUrl : assetUrl(c.img), alt: '' })]) : null,
-            el('div', { class: 'add', text: c.img ? '변경' : '+ 사진', onclick: function () { addArchiveImage(i); } })
-          ]),
-          el('div', { style: 'flex:1;min-width:220px' }, [
-            el('label', { class: 'field', style: 'margin:0' }, [
-              el('span', { text: '첨부 파일 (카탈로그 · 사양서 등)' }),
-              c.file
-                ? el('div', { class: 'att' }, [
-                    el('a', {
-                      class: 'att-name', href: assetUrl(c.file), target: '_blank', rel: 'noopener',
-                      text: c.fileName || c.file.split('/').pop()
-                    }),
-                    el('button', {
-                      class: 'att-x', text: '×', title: '첨부 삭제',
-                      onclick: function () {
-                        var cards = archiveModel().cards;
-                        cards[i].file = ''; cards[i].fileName = '';
-                        archiveWrite(cards); renderArchive();
-                        toast('첨부를 뺐습니다.');
-                      }
-                    })
-                  ])
-                : el('button', {
-                    class: 'btn sm', text: '+ 파일 올리기',
-                    onclick: function () {
-                      pickAttachment().then(function (f) {
-                        if (!f) return;
-                        var cards = archiveModel().cards;
-                        cards[i].file = f.path; cards[i].fileName = f.name;
-                        archiveWrite(cards); renderArchive();
-                        toast('“' + f.name + '” 을 붙였습니다. 발행하면 내려받을 수 있습니다.', 'ok', 5000);
-                      });
-                    }
-                  })
-            ])
-          ]),
-          el('div', { style: 'flex:1;min-width:200px' }, [
-            el('label', { class: 'field', style: 'margin:0' }, [
-              el('span', { text: c.file ? '연결 링크 (첨부가 있으면 첨부가 우선)' : '연결 링크 (선택)' }),
-              inp('href', 'https://…')
-            ])
-          ]),
-          el('div', { style: 'width:150px' }, [
-            el('label', { class: 'field', style: 'margin:0' }, [el('span', { text: '등록일' }), inp('date', '2026.07.29')])
+        el('div', { class: 'arch-edit' }, [
+          cover,
+          el('div', { class: 'arch-fields' }, [
+            field('자료 유형', typeSel),
+            field('관련 제품 · 카테고리', prod),
+            field('등록일', inp('date', '2026.09.17')),
+            field('간단한 설명', desc, 'wide'),
+            field('첨부 파일 (PDF·한글·워드·엑셀 등, 20MB 이하)', fileCell),
+            field('파일 형식', inp('ext', 'PDF')),
+            field('용량', inp('size', '2.4MB')),
+            field(c.file ? '연결 링크 (첨부 파일이 있으면 파일이 우선)' : '연결 링크 (파일 대신 다른 주소로 연결할 때, 선택)', inp('href', 'https://…'), 'wide')
           ])
         ])
       ]));
@@ -2543,7 +2617,8 @@
     if (!m) return toast('자료실 목록을 찾지 못했습니다.', 'err');
     var d = new Date();
     m.cards.unshift({
-      href: '', img: '', title: '새 자료', pin: false, file: '', fileName: '',
+      title: '새 자료', desc: '', type: ARCH_TYPES[0], product: '', img: '', pin: false,
+      file: '', fileName: '', ext: '', size: '', href: '',
       date: d.getFullYear() + '.' + pad(d.getMonth() + 1) + '.' + pad(d.getDate())
     });
     archiveWrite(m.cards);
