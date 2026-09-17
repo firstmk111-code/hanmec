@@ -243,6 +243,20 @@ aside nav a .n.red{background:var(--danger);color:#fff}
 .ia-move{display:flex;gap:4px;flex:none}
 .ia-move .btn{width:30px;padding:0;flex:none}
 
+/* 카드에서 이름 바로 고치기 */
+.img-meta .input.nm{width:100%;height:32px;min-height:32px;font-size:12.5px;font-weight:600;padding:0 8px}
+.img-meta .input.nm:focus{border-color:var(--brand)}
+.nm-row{display:flex;align-items:flex-start;gap:6px}
+.nm-row .lb{flex:1;min-height:auto}
+.nm-edit{flex:none;border:0;background:none;padding:0;cursor:pointer;white-space:nowrap;
+  font-size:11.5px;font-weight:700;color:var(--brand);text-decoration:underline}
+.nm-edit:hover{color:var(--brand-l)}
+
+/* 추가 창의 분류 선택 */
+.ga-cat{display:flex;align-items:center;gap:10px;margin:10px 0 4px}
+.ga-cat label{font-size:12.5px;font-weight:700;color:var(--brand);flex:none}
+.ga-cat select{max-width:260px;height:34px;min-height:34px}
+
 /* 추가 대화상자 */
 .ga-where{background:#f5f9fd;border:1px solid var(--brand-l);border-radius:9px;padding:12px 14px;margin-bottom:16px}
 .ga-where-t{font-size:12px;font-weight:700;color:var(--brand);margin-bottom:4px}

@@ -655,6 +655,7 @@
         id: g.id,
         group: grp,
         page: g.page,
+        shape: g.shape,
         pageLabel: g.pageNames.join(' · '),
         areaLabel: g.area,
         category: g.category,
@@ -825,6 +826,27 @@
     var im = { path: it.src, label: it.text || it.alt, uses: [{ page: a.page, pageName: a.pageLabel }] };
     var canEdit = a.type === 'gallery';
 
+    /* 글이 한 칸뿐인 자리(인증서 이름 등)는 카드에서 바로 고칠 수 있게 한다.
+       여러 칸이면 '내용 수정' 창을 연다. */
+    var nameBox;
+    if (canEdit && a.slots.length === 1) {
+      var inp = el('input', { class: 'input sm nm', value: it.text || '', placeholder: a.slots[0].slice(0, 24) });
+      inp.addEventListener('change', function () {
+        var v = (inp.value || '').trim();
+        if (v === (it.text || '')) return;
+        if (!S.doc.updateGalleryItem(a.id, idx, [v])) { toast('고치지 못했습니다.', 'err'); return; }
+        afterGalleryChange('이름을 바꿨습니다. 발행하면 홈페이지에 반영됩니다.');
+      });
+      nameBox = inp;
+    } else if (canEdit && a.slots.length > 1) {
+      nameBox = el('div', { class: 'nm-row' }, [
+        el('div', { class: 'lb', text: it.text || it.alt || '(설명 없음)' }),
+        el('button', { class: 'nm-edit', text: '내용 수정', onclick: function () { editItemDialog(a, idx); } })
+      ]);
+    } else {
+      nameBox = el('div', { class: 'lb', text: it.text || it.alt || '(설명 없음)' });
+    }
+
     return el('div', { class: 'img-card' + (ch ? ' changed' : '') }, [
       el('div', { class: 'thumb' }, [
         el('img', { src: src, loading: 'lazy', decoding: 'async', alt: '' }),
@@ -832,7 +854,7 @@
         el('span', { class: 'ord', text: (idx + 1) + '번째' })
       ]),
       el('div', { class: 'img-meta' }, [
-        el('div', { class: 'lb', text: it.text || it.alt || '(설명 없음)' }),
+        nameBox,
         el('div', { class: 'fn', text: (ch ? ch.fileName : it.src.split('/').pop()) }),
         el('div', { class: 'use' }, a.crumb.map(function (c) { return el('span', { text: c }); }))
       ]),
@@ -915,6 +937,56 @@
     });
   }
 
+  /** 글칸 입력 묶음을 만든다. values 를 주면 그 값으로 채운다(수정용). */
+  function buildTextFields(a, values) {
+    var names = slotNames(a.slots);
+    var inputs = [];
+    var host = el('div', { class: 'ga-fields' });
+    a.slots.forEach(function (sample, i) {
+      var long = sample.length > 30;
+      var box = long ? el('textarea', { class: 'input', rows: 3 }) : el('input', { class: 'input', type: 'text' });
+      box.placeholder = sample.slice(0, 60);
+      if (values && values[i] !== undefined) box.value = values[i];
+      inputs.push(box);
+      host.appendChild(el('div', { class: 'ga-field' }, [
+        el('label', { text: names[i] }),
+        box,
+        values ? null : el('span', { class: 'hint', text: '지금 있는 항목 예: “' + sample.slice(0, 40) + (sample.length > 40 ? '…' : '') + '”' })
+      ]));
+    });
+    return { node: host, inputs: inputs };
+  }
+
+  /** 글이 여러 칸인 항목의 내용을 고치는 창 */
+  function editItemDialog(a, idx) {
+    var cur = S.doc.galleryItemTexts(a.id, idx);
+    var f = buildTextFields(a, cur);
+    var body = el('div', {}, [
+      el('div', { class: 'ga-where' }, [
+        el('div', { class: 'ga-where-t', text: '고치는 자리' }),
+        el('div', { class: 'ga-where-v', text: a.crumb.join('  >  ') }),
+        el('div', { class: 'hint', text: (idx + 1) + '번째 항목의 내용을 고칩니다. 사진은 그대로 둡니다.' })
+      ]),
+      f.node
+    ]);
+    confirmBox('내용 수정', body, '저장').then(function (ok) {
+      if (!ok) return;
+      var texts = f.inputs.map(function (x) { return (x.value || '').trim(); });
+      if (texts.some(function (t) { return !t; })) { toast('내용을 모두 입력해 주세요.', 'err'); return; }
+      if (!S.doc.updateGalleryItem(a.id, idx, texts)) { toast('고치지 못했습니다.', 'err'); return; }
+      afterGalleryChange('내용을 바꿨습니다. 발행하면 홈페이지에 반영됩니다.');
+    });
+  }
+
+  /** 같은 영역의 다른 분류들 (인증현황의 특허·인증서·기타 등록증처럼) */
+  function siblingAreas(a) {
+    if (!a.category) return [];
+    return buildAreas().filter(function (x) {
+      return x.type === 'gallery' && x.page === a.page &&
+        x.areaLabel === a.areaLabel && x.shape === a.shape && x.category;
+    });
+  }
+
   /** 새 이미지(+글) 추가.
       입력칸은 그 자리의 기존 항목에서 자동으로 뽑아낸다 (영역마다 코드를 따로 쓰지 않는다). */
   function addGalleryDialog(a) {
@@ -944,25 +1016,36 @@
     });
 
     // 기존 항목의 글칸 → 입력칸 (견본 글은 값이 아니라 안내문구로만 넣는다)
-    var names = slotNames(a.slots);
-    var fields = el('div', { class: 'ga-fields' });
-    a.slots.forEach(function (sample, i) {
-      var long = sample.length > 30;
-      var box = long ? el('textarea', { class: 'input', rows: 3 }) : el('input', { class: 'input', type: 'text' });
-      box.placeholder = sample.slice(0, 60);
-      inputs.push(box);
-      fields.appendChild(el('div', { class: 'ga-field' }, [
-        el('label', { text: names[i] }),
-        box,
-        el('span', { class: 'hint', text: '지금 있는 항목 예: “' + sample.slice(0, 40) + (sample.length > 40 ? '…' : '') + '”' })
-      ]));
-    });
+    var f = buildTextFields(a, null);
+    inputs = f.inputs;
+    var fields = f.node;
+
+    /* 같은 영역에 분류가 여러 개면 (인증현황: 특허·인증서·기타 등록증) 골라 넣을 수 있게 한다 */
+    var sibs = siblingAreas(a);
+    var target = a;
+    var whereV = el('div', { class: 'ga-where-v', text: a.crumb.join('  >  ') });
+    var catSel = null;
+    if (sibs.length > 1) {
+      catSel = el('select', { class: 'input' });
+      sibs.forEach(function (s) {
+        var o = el('option', { value: s.id, text: s.category + '  (현재 ' + s.items.length + '개)' });
+        if (s.id === a.id) o.selected = true;
+        catSel.appendChild(o);
+      });
+      catSel.addEventListener('change', function () {
+        target = sibs.filter(function (s) { return s.id === catSel.value; })[0] || a;
+        whereV.textContent = target.crumb.join('  >  ');
+      });
+    }
 
     var body = el('div', {}, [
       el('div', { class: 'ga-where' }, [
         el('div', { class: 'ga-where-t', text: '추가되는 위치' }),
-        el('div', { class: 'ga-where-v', text: a.crumb.join('  >  ') }),
-        el('div', { class: 'hint', text: '이 이미지는 위 영역의 마지막(' + (a.items.length + 1) + '번째)에 추가됩니다. 순서는 추가 후 ↑ ↓ 로 바꾸실 수 있습니다.' })
+        whereV,
+        catSel ? el('div', { class: 'ga-cat' }, [
+          el('label', { text: '분류 선택' }), catSel
+        ]) : null,
+        el('div', { class: 'hint', text: '고른 분류의 마지막에 추가됩니다. 순서는 추가 후 ↑ ↓ 로 바꾸실 수 있습니다.' })
       ]),
       el('div', { class: 'ga-pick' }, [preview, el('div', {}, [fileBtn, fileName])]),
       a.slots.length ? fields : el('p', { class: 'hint', text: '이 자리는 이미지만 들어갑니다. 입력할 글은 없습니다.' })
@@ -980,12 +1063,12 @@
         newPath: newPath, base64: picked.base64, previewUrl: picked.dataUrl,
         fileName: picked.name, isNew: true
       };
-      if (!S.doc.addGalleryItem(a.id, newPath, texts)) {
+      if (!S.doc.addGalleryItem(target.id, newPath, texts)) {
         delete S.imgChanges['__new__' + newPath];
         toast('추가하지 못했습니다. 새로고침 후 다시 시도해 주세요.', 'err');
         return;
       }
-      afterGalleryChange('추가되었습니다. 발행하면 홈페이지에 반영됩니다.');
+      afterGalleryChange('“' + (target.category || target.areaLabel || '해당 자리') + '” 에 추가했습니다. 발행하면 반영됩니다.');
     });
   }
 

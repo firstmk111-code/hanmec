@@ -1062,6 +1062,44 @@
     return this.writeGallery(id, items);
   };
 
+  /** 한 항목의 글자만 고친다 (사진은 그대로 둔다) */
+  SiteDoc.prototype.updateGalleryItem = function (id, index, texts) {
+    var items = this.galleryItems(id);
+    if (index < 0 || index >= items.length) return false;
+    var src = items[index].src;
+    var cur = items[index].source;
+    items[index].source = buildItem(cur, 0, cur.length, src, texts);
+    return this.writeGallery(id, items);
+  };
+
+  /** 한 항목의 글칸 내용을 읽어온다 */
+  SiteDoc.prototype.galleryItemTexts = function (id, index) {
+    var items = this.galleryItems(id);
+    if (index < 0 || index >= items.length) return [];
+    var frag = items[index].source;
+    return textSlots(parseNodes(frag), frag).map(function (s) { return s.text; });
+  };
+
+  /** 항목을 다른 자리(같은 영역의 다른 분류 등)로 옮긴다 */
+  SiteDoc.prototype.moveGalleryItemTo = function (fromId, index, toId) {
+    if (fromId === toId) return false;
+    var from = this.galleryItems(fromId);
+    if (index < 0 || index >= from.length) return false;
+    if (from.length <= SiteDoc.MIN_GALLERY_ITEMS) return false;
+
+    var moved = from[index];
+    var to = this.galleryItems(toId);
+    if (!to.length) return false;
+
+    // 옮겨 갈 자리의 생김새로 다시 만든다 (분류마다 마크업이 조금씩 다를 수 있다)
+    var sample = to[to.length - 1].source;
+    var texts = this.galleryItemTexts(fromId, index);
+    to.push({ src: moved.src, source: buildItem(sample, 0, sample.length, moved.src, texts) });
+
+    from.splice(index, 1);
+    return this.writeGallery(fromId, from) && this.writeGallery(toId, to);
+  };
+
   /** 한 항목의 이미지만 교체 (같은 파일이 다른 자리에도 쓰일 때 그 자리는 건드리지 않는다) */
   SiteDoc.prototype.replaceGalleryImage = function (id, index, src) {
     var items = this.galleryItems(id);
