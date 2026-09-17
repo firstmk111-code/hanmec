@@ -192,6 +192,8 @@ main{margin-left:250px;padding:calc(var(--topbar) + 24px) 24px 60px}
 .mail-bar.off{background:#f7f9fc;border-color:var(--line);color:var(--slate)}
 .mail-bar .ic{font-size:15px;flex:none}
 .mail-bar .tx{flex:1}
+/* 미리보기는 링크지만 단추처럼 보여야 한다 */
+.mail-bar a.btn{flex:none;text-decoration:none;display:inline-flex;align-items:center}
 
 /* ---------- 문의함 ---------- */
 aside nav a .n.red{background:var(--danger);color:#fff}
