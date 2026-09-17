@@ -61,17 +61,26 @@
   }
   function esc(s) { return SiteDoc.escapeHtml(s); }
 
-  /** readOnly 로 부르면 '취소' 없이 닫기 버튼만 둔다 (읽기만 하는 창) */
-  function confirmBox(title, bodyNode, okLabel, readOnly) {
+  /** 네 번째 값으로 true 를 주면 '취소' 없이 닫기 버튼만 (읽기 전용 창).
+      객체를 주면 { readOnly, cancelLabel, okDanger } 로 더 세밀하게 지정할 수 있다. */
+  function confirmBox(title, bodyNode, okLabel, opts) {
+    if (opts === true) opts = { readOnly: true };
+    opts = opts || {};
     return new Promise(function (resolve) {
       var box = el('div', { class: 'modal' }, [
         el('div', { class: 'modal-box' }, [
           el('header', { text: title }),
           el('div', { class: 'body' }, [bodyNode]),
           el('footer', {}, [
-            readOnly ? null
-              : el('button', { class: 'btn', text: '취소', onclick: function () { host.innerHTML = ''; resolve(false); } }),
-            el('button', { class: 'btn primary', text: okLabel || '확인', onclick: function () { host.innerHTML = ''; resolve(true); } })
+            opts.readOnly ? null
+              : el('button', {
+                  class: 'btn', text: opts.cancelLabel || '취소',
+                  onclick: function () { host.innerHTML = ''; resolve(false); }
+                }),
+            el('button', {
+              class: 'btn ' + (opts.okDanger ? 'danger-solid' : 'primary'), text: okLabel || '확인',
+              onclick: function () { host.innerHTML = ''; resolve(true); }
+            })
           ])
         ])
       ]);
@@ -316,22 +325,46 @@
 
       var when = new Date(dr.savedAt);
       var stale = dr.headSha && S.headSha && dr.headSha !== S.headSha;
+      var days = Math.floor((Date.now() - when.getTime()) / 86400000);
+      var old = days >= 2;
+
+      /* 이 저장본을 불러오면 지금 홈페이지보다 내용이 줄어드는지 미리 확인한다.
+         (오래된 저장본을 불러와 발행하는 바람에 제품이 통째로 사라진 적이 있다) */
+      var lost = [];
+      try {
+        lost = shrinkage(censusOf(S.doc), censusOf(new SiteDoc(dr.html)));
+      } catch (e) { /* 비교 실패 시 경고 없이 진행 */ }
+
+      var risky = lost.length > 0;
 
       var body = el('div', {}, [
+        risky ? shrinkBox(lost, '이 저장본을 불러오면 지금 홈페이지에 있는 아래 내용이 사라집니다.') : null,
         el('p', { text: '발행하지 않고 남겨둔 작업이 있습니다.' }),
         el('p', { class: 'hint', style: 'margin-top:6px',
           text: when.getFullYear() + '.' + pad(when.getMonth() + 1) + '.' + pad(when.getDate()) + ' ' +
-                pad(when.getHours()) + ':' + pad(when.getMinutes()) + ' 에 마지막으로 저장됨' }),
+                pad(when.getHours()) + ':' + pad(when.getMinutes()) + ' 에 마지막으로 저장됨' +
+                (days >= 1 ? '  (' + days + '일 전)' : '') }),
         parts.length ? el('ul', { style: 'margin:12px 0 0 18px' }, parts.map(function (p) { return el('li', { text: p }); })) : null,
-        stale ? el('p', { class: 'hint', style: 'margin-top:14px;color:var(--warn)',
-          text: '※ 그 사이 홈페이지가 다른 곳에서 수정되었습니다. 남겨둔 내용만 최신 홈페이지 위에 얹어서 이어갑니다.' }) : null,
-        el('p', { class: 'hint', style: 'margin-top:14px', text: '이어서 작업하시겠습니까? “새로 시작”을 고르면 남겨둔 작업은 지워집니다.' })
+        old ? el('p', { class: 'hint', style: 'margin-top:12px;color:var(--warn)',
+          text: '※ 저장한 지 ' + days + '일이 지났습니다. 그 사이 다른 곳에서 홈페이지를 고쳤다면 새로 시작하시는 편이 안전합니다.' }) : null,
+        stale ? el('p', { class: 'hint', style: 'margin-top:8px;color:var(--warn)',
+          text: '※ 그 사이 홈페이지가 다른 곳에서 수정되었습니다.' }) : null,
+        el('p', { class: 'hint', style: 'margin-top:14px',
+          text: risky
+            ? '내용이 사라져도 괜찮을 때만 이어서 작업하세요. 잘 모르겠으면 “새로 시작”을 고르시면 됩니다.'
+            : '이어서 작업하시겠습니까? “새로 시작”을 고르면 남겨둔 작업은 지워집니다.' })
       ]);
 
-      return confirmBox('이어서 작업하기', body, '이어서 작업').then(function (ok) {
+      return confirmBox(
+        risky ? '이어서 작업하기 — 확인이 필요합니다' : '이어서 작업하기',
+        body,
+        risky ? '내용이 사라져도 이어서 작업' : '이어서 작업',
+        { cancelLabel: risky || old ? '새로 시작 (권장)' : '새로 시작', okDanger: risky }
+      ).then(function (ok) {
         if (!ok) {
           draftReady = true;
           draftClear();
+          toast('최신 홈페이지 내용으로 시작합니다.', 'ok');
           return false;
         }
         var merged = mergeDraftInto(S.doc, dr.html);
@@ -2314,6 +2347,59 @@
     });
   }
 
+  /* ===================== 내용이 줄어드는지 살피기 =====================
+     발행하거나 임시저장본을 불러올 때, 실수로 내용이 통째로 사라지는 일을 막는다.
+     (오래된 임시저장본을 불러와 발행하면 최신 내용이 옛것으로 덮어써진 적이 있다) */
+
+  /** 문서에 무엇이 몇 개 있는지 세어 둔다 */
+  function censusOf(doc) {
+    var c = { items: {} };
+    try {
+      if (doc.hasProducts()) c.items['제품'] = doc.productsData().length;
+
+      var perf = doc.perfData() || {};
+      var pn = Object.keys(perf).reduce(function (a, k) { return a + (perf[k] || []).length; }, 0);
+      if (pn) c.items['주요실적'] = pn;
+
+      (doc.listGalleries() || []).forEach(function (g) {
+        var name = crumbOf([g.pageNames.join(' · '), g.area, g.category]).join(' › ');
+        c.items[name] = (c.items[name] || 0) + g.items.length;
+      });
+
+      c.items['전체 이미지'] = (doc.listImages() || []).length;
+    } catch (e) { /* 셀 수 없으면 비교를 건너뛴다 */ }
+    return c;
+  }
+
+  /** 줄어든 항목만 추려낸다 */
+  function shrinkage(before, after) {
+    var out = [];
+    Object.keys(before.items).forEach(function (k) {
+      var b = before.items[k];
+      var a = after.items[k] === undefined ? 0 : after.items[k];
+      if (a < b) out.push({ name: k, from: b, to: a });
+    });
+    out.sort(function (x, y) { return (y.from - y.to) - (x.from - x.to); });
+    return out;
+  }
+
+  /** 줄어드는 내용을 눈에 띄게 보여 주는 상자 */
+  function shrinkBox(list, lead) {
+    return el('div', { class: 'warn-box' }, [
+      el('div', { class: 'warn-t', text: '⚠ 내용이 줄어듭니다' }),
+      el('p', { class: 'warn-lead', text: lead }),
+      el('ul', { class: 'warn-list' }, list.map(function (s) {
+        return el('li', {}, [
+          el('b', { text: s.name }),
+          document.createTextNode('  ' + s.from + '개 → '),
+          el('strong', { text: s.to + '개' }),
+          el('span', { class: 'warn-gap', text: ' (' + (s.from - s.to) + '개 사라짐)' })
+        ]);
+      })),
+      el('p', { class: 'warn-foot', text: '의도한 것이 아니라면 취소하고 제작사에 문의해 주세요.' })
+    ]);
+  }
+
   /* ===================== 발행 ===================== */
 
   function changeSummary() {
@@ -2332,13 +2418,22 @@
     var parts = changeSummary();
     if (!parts.length) return;
 
+    // 지금 올리려는 내용이 현재 홈페이지보다 줄어들지 먼저 살핀다
+    var lost = [];
+    try {
+      lost = shrinkage(censusOf(new SiteDoc(S.doc.original)), censusOf(S.doc));
+    } catch (e) { /* 비교 실패 시 그냥 진행 */ }
+
     var body = el('div', {}, [
+      lost.length ? shrinkBox(lost, '지금 발행하면 홈페이지에서 아래 내용이 사라집니다.') : null,
       el('p', { text: '아래 내용을 홈페이지에 반영합니다.' }),
       el('ul', { style: 'margin:12px 0 0 18px' }, parts.map(function (p) { return el('li', { text: p }); })),
-      el('p', { class: 'hint', style: 'margin-top:14px', text: '반영 후 홈페이지에 실제로 보이기까지 1~2분 정도 걸립니다.' })
+      el('p', { class: 'hint', style: 'margin-top:14px', text: '반영 후 홈페이지에 실제로 보이기까지 5분 정도 걸립니다. (길면 10분)' })
     ]);
 
-    confirmBox('홈페이지에 발행', body, '발행하기').then(function (ok) {
+    confirmBox('홈페이지에 발행', body,
+      lost.length ? '그래도 발행하기' : '발행하기',
+      { okDanger: lost.length > 0 }).then(function (ok) {
       if (!ok) return;
       busy(true, '발행 준비 중…');
 
