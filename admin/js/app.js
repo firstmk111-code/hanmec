@@ -2929,7 +2929,10 @@
     });
 
     var tr = el('tr', { class: it.status === 'new' ? 'is-new' : '' }, [
-      el('td', { class: 'inq-d', text: fmtInqDate(it.createdAt) }),
+      el('td', {}, [
+        el('div', { class: 'inq-d', text: fmtInqDate(it.createdAt) }),
+        el('div', { class: 'inq-t', text: fmtInqTime(it.createdAt) })
+      ]),
       el('td', {}, [
         el('div', { class: 'inq-co', text: it.company || '(회사명 없음)' }),
         el('div', { class: 'inq-nm', text: it.name })
@@ -2939,7 +2942,7 @@
         el('div', { class: 'inq-em', text: it.email })
       ]),
       el('td', {}, [
-        it.solution ? el('div', { class: 'inq-sol', text: it.solution }) : null,
+        el('div', { class: 'inq-sol', text: it.solution || '(솔루션 미선택)' }),
         el('div', { class: 'inq-msg', text: it.excerpt || '(내용 없음)' }),
         el('button', { class: 'inq-more', text: '전체 내용 보기', onclick: function () { openInquiry(it); } })
       ]),
@@ -2954,11 +2957,16 @@
     return tr;
   }
 
+  /* 날짜를 크게, 시각은 아래에 작게 */
   function fmtInqDate(iso) {
     if (!iso) return '';
     var d = new Date(iso);
-    return d.getFullYear() + '.' + pad(d.getMonth() + 1) + '.' + pad(d.getDate()) +
-      '\n' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    return d.getFullYear() + '.' + pad(d.getMonth() + 1) + '.' + pad(d.getDate());
+  }
+  function fmtInqTime(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    return pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
   function openInquiry(it) {
