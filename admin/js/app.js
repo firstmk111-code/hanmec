@@ -2821,6 +2821,12 @@
   }
 
   /* 알림 메일이 연결돼 있는지 보여준다 */
+  var MAIL_OFF = {
+    'disabled': '알림 메일은 지금 꺼져 있습니다. 문의는 이 화면에 그대로 쌓입니다.',
+    'no-key': '메일 서비스 키가 아직 등록되지 않았습니다. 문의는 이 화면에 그대로 쌓입니다.',
+    'no-from': '보내는 사람 주소가 아직 정해지지 않았습니다. 문의는 이 화면에 그대로 쌓입니다.'
+  };
+
   function showMailStatus() {
     var bar = $('#mailBar'), tx = $('#mailTx'), btn = $('#mailTest');
     if (!bar) return;
@@ -2832,7 +2838,8 @@
           (m.from ? '  (보내는 주소: ' + m.from + ')' : '');
         btn.hidden = false;
       } else {
-        tx.textContent = '알림 메일이 아직 연결되어 있지 않습니다. 이 화면에서 직접 확인해 주세요.';
+        tx.textContent = (MAIL_OFF[m.reason] || '알림 메일을 보낼 수 없는 상태입니다.') +
+          '  받을 주소: ' + m.to;
         btn.hidden = true;
       }
     }).catch(function () { bar.hidden = true; });
@@ -3060,7 +3067,7 @@
     $('#inqReload').addEventListener('click', loadInquiries);
     $('#mailTest') && $('#mailTest').addEventListener('click', function () {
       busy(true, '시험 메일을 보내는 중…');
-      inqApi('mail', { method: 'POST' }).then(function (r) {
+      inqApi('mail/test', { method: 'POST' }).then(function (r) {
         busy(false);
         toast('“' + r.to + '” 로 시험 메일을 보냈습니다. 받은 편지함(또는 스팸함)을 확인해 주세요.', 'ok', 7000);
       }).catch(function (e) { busy(false); toast(e.message, 'err', 7000); });
