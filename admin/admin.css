@@ -186,6 +186,13 @@ main{margin-left:250px;padding:calc(var(--topbar) + 24px) 24px 60px}
 .inq-alert .tx span{font-size:12.5px;color:var(--slate)}
 .inq-alert .btn{flex:none}
 
+/* ---------- 알림 메일 상태 ---------- */
+.mail-bar{display:flex;align-items:center;gap:11px;margin-bottom:16px;padding:11px 15px;
+  background:#eef7f1;border:1px solid #cfe8da;border-radius:9px;font-size:13px;color:#0b6b49}
+.mail-bar.off{background:#f7f9fc;border-color:var(--line);color:var(--slate)}
+.mail-bar .ic{font-size:15px;flex:none}
+.mail-bar .tx{flex:1}
+
 /* ---------- 문의함 ---------- */
 aside nav a .n.red{background:var(--danger);color:#fff}
 .inq-tbl{width:100%;border-collapse:collapse;font-size:13px}

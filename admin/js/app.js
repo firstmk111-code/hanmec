@@ -2817,6 +2817,24 @@
     }).catch(function (e) {
       host.innerHTML = '<div class="empty">문의를 불러오지 못했습니다.<br><small>' + esc(e.message) + '</small></div>';
     });
+    showMailStatus();
+  }
+
+  /* 알림 메일이 연결돼 있는지 보여준다 */
+  function showMailStatus() {
+    var bar = $('#mailBar'), tx = $('#mailTx'), btn = $('#mailTest');
+    if (!bar) return;
+    inqApi('mail').then(function (m) {
+      bar.hidden = false;
+      bar.classList.toggle('off', !m.on);
+      if (m.on) {
+        tx.textContent = '새 문의가 들어오면 ' + m.to + ' 로 알림 메일이 갑니다.';
+        btn.hidden = false;
+      } else {
+        tx.textContent = '알림 메일이 아직 연결되어 있지 않습니다. 이 화면에서 직접 확인해 주세요.';
+        btn.hidden = true;
+      }
+    }).catch(function () { bar.hidden = true; });
   }
 
   /** 왼쪽 메뉴 숫자 + 대시보드 알림을 함께 갱신한다 */
@@ -3031,6 +3049,13 @@
 
     $('#inqSearch').addEventListener('input', renderInq);
     $('#inqReload').addEventListener('click', loadInquiries);
+    $('#mailTest') && $('#mailTest').addEventListener('click', function () {
+      busy(true, '시험 메일을 보내는 중…');
+      inqApi('mail', { method: 'POST' }).then(function (r) {
+        busy(false);
+        toast('“' + r.to + '” 로 시험 메일을 보냈습니다. 받은 편지함(또는 스팸함)을 확인해 주세요.', 'ok', 7000);
+      }).catch(function (e) { busy(false); toast(e.message, 'err', 7000); });
+    });
 
     $('#txtPage').addEventListener('change', function () { S.curPage = this.value; renderText(); });
     $('#txtShowNav').addEventListener('change', renderText);
