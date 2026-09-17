@@ -154,6 +154,27 @@ main{margin-left:250px;padding:calc(var(--topbar) + 24px) 24px 60px}
 .limit-bar .msg{display:block}
 .limit-bar .sub{display:block;margin-top:6px;color:#a8783a;font-size:12.5px}
 
+/* ---------- 게시판: 상단 고정 · 첨부파일 ---------- */
+.tbl td.c{text-align:center}
+.pin-chk{width:17px;height:17px;min-height:auto;margin:0;cursor:pointer;accent-color:var(--brand)}
+.pin-tag{display:inline-block;background:var(--brand);color:#fff;font-size:11px;font-weight:700;
+  padding:3px 9px;border-radius:20px}
+.tbl tr.is-pin td{background:#f5f9fd}
+.pin-box{display:inline-flex;align-items:center;gap:5px;flex:none;padding:5px 10px;cursor:pointer;
+  border:1px solid var(--line);border-radius:7px;background:#fff;font-size:12.5px;color:var(--slate);transition:.15s}
+.pin-box:hover{border-color:var(--brand-l)}
+.pin-box.on{border-color:var(--brand);background:#eef3fa;color:var(--brand);font-weight:700}
+.pin-box input{width:15px;height:15px;min-height:auto;margin:0;cursor:pointer;accent-color:var(--brand)}
+#archList .item.is-pin{border-color:var(--brand-l);box-shadow:0 0 0 2px rgba(16,100,167,.10)}
+
+.att{display:flex;align-items:center;gap:6px}
+.att-name{font-size:12px;color:var(--brand);font-weight:600;text-decoration:underline;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px}
+.att-name:hover{color:var(--brand-l)}
+.att-x{width:20px;height:20px;flex:none;border:1px solid var(--line);border-radius:5px;background:#fff;
+  color:var(--slate2);font-size:13px;line-height:1;cursor:pointer;padding:0}
+.att-x:hover{border-color:var(--danger);color:var(--danger)}
+
 /* ---------- 새 문의 알림 (대시보드) ---------- */
 .inq-alert{display:flex;align-items:center;gap:14px;margin-bottom:18px;padding:16px 18px;
   background:linear-gradient(90deg,#eaf4fd,#f5fafe);border:1.5px solid var(--brand-l);border-radius:12px;

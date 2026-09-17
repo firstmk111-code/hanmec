@@ -342,10 +342,22 @@
     <section class="panel" data-panel="board">
       <div class="card">
         <h3>공지사항</h3>
-        <p class="desc">홈페이지 고객지원 &gt; 공지사항 목록에 표시될 글입니다.</p>
+        <p class="desc">
+          홈페이지 고객지원 &gt; 공지사항 목록에 표시될 글입니다.
+          <b>고정</b>에 체크하면 그 글이 목록 맨 위에 <b>공지</b> 표시와 함께 올라갑니다.
+          <b>+ 파일</b>로 붙인 자료는 방문자가 내려받을 수 있습니다.
+        </p>
         <div class="tbl-wrap">
           <table class="tbl">
-            <thead><tr><th style="width:70px">번호</th><th>제목</th><th style="width:110px">작성자</th><th style="width:130px">등록일</th><th style="width:80px">조회</th><th style="width:60px"></th></tr></thead>
+            <thead><tr>
+              <th style="width:52px">고정</th>
+              <th style="width:70px">번호</th>
+              <th>제목</th>
+              <th style="width:190px">첨부파일</th>
+              <th style="width:110px">작성자</th>
+              <th style="width:130px">등록일</th>
+              <th style="width:60px"></th>
+            </tr></thead>
             <tbody id="noticeRows"></tbody>
           </table>
         </div>
