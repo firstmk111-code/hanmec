@@ -176,6 +176,7 @@
       $('#shell').classList.add('on');
       initAccount();
       busy(false);
+      startInqWatch();         // 새 문의 알림을 켠다
       return offerDraft();     // 발행 안 하고 남겨둔 작업이 있으면 이어서 할지 물어본다
     }).catch(function (e) {
       /* 홈페이지 내용을 못 불러와도 문의함은 홈페이지와 무관하므로 그것만은 쓸 수 있게 연다.
@@ -202,7 +203,23 @@
       b.hidden = false;
       b.querySelector('.msg').textContent = msg || '홈페이지 내용을 불러오지 못했습니다.';
     }
+    startInqWatch();
     go('inq');
+  }
+
+  /* 새 문의가 들어왔는지 이따금 확인한다.
+     관리자를 켜 둔 채로 있어도 알 수 있게 한다. */
+  var inqWatchTimer = null;
+  function startInqWatch() {
+    refreshInqBadge();
+    clearInterval(inqWatchTimer);
+    inqWatchTimer = setInterval(function () {
+      if (document.hidden) return;          // 다른 탭을 보고 있으면 쉰다
+      refreshInqBadge();
+    }, 180000);                              // 3분마다
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) refreshInqBadge();
+    });
   }
 
   function submitLogin(silent) {
@@ -2504,11 +2521,30 @@
     });
   }
 
+  /** 왼쪽 메뉴 숫자 + 대시보드 알림을 함께 갱신한다 */
   function updateInqBadge(n) {
+    n = n || 0;
     var b = $('#nInq');
-    if (!b) return;
-    b.textContent = n;
-    b.hidden = !n;
+    if (b) { b.textContent = n; b.hidden = !n; }
+
+    var box = $('#inqAlert');
+    if (box) {
+      box.hidden = !n;
+      var t = $('#inqAlertTitle'), s = $('#inqAlertSub');
+      if (t) t.textContent = '읽지 않은 문의가 ' + n + '건 있습니다';
+      if (s) s.textContent = '홈페이지 온라인 문의로 접수된 내용입니다. 확인 후 상태를 바꿔 주세요.';
+    }
+
+    // 브라우저 탭 제목에도 표시해 다른 창을 보고 있어도 알 수 있게
+    document.title = (n ? '(' + n + ') ' : '') + '한맥아이피에스 홈페이지 관리자';
+  }
+
+  /** 숫자만 가볍게 받아와 알림을 갱신한다 (목록 전체를 받지 않는다) */
+  function refreshInqBadge() {
+    if (!S.be || S.be.mode !== 'server') return Promise.resolve();
+    return inqApi('inquiries?countOnly=1')
+      .then(function (d) { updateInqBadge(d.newCount || 0); })
+      .catch(function () { /* 조용히 넘어간다 — 알림은 부가 기능 */ });
   }
 
   function renderInq() {

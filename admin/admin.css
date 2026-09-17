@@ -154,6 +154,17 @@ main{margin-left:250px;padding:calc(var(--topbar) + 24px) 24px 60px}
 .limit-bar .msg{display:block}
 .limit-bar .sub{display:block;margin-top:6px;color:#a8783a;font-size:12.5px}
 
+/* ---------- 새 문의 알림 (대시보드) ---------- */
+.inq-alert{display:flex;align-items:center;gap:14px;margin-bottom:18px;padding:16px 18px;
+  background:linear-gradient(90deg,#eaf4fd,#f5fafe);border:1.5px solid var(--brand-l);border-radius:12px;
+  box-shadow:0 6px 18px rgba(16,100,167,.10)}
+.inq-alert .ic{width:40px;height:40px;flex:none;border-radius:50%;background:var(--brand);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:18px}
+.inq-alert .tx{flex:1;min-width:0}
+.inq-alert .tx b{display:block;font-size:15.5px;color:var(--ink);margin-bottom:2px}
+.inq-alert .tx span{font-size:12.5px;color:var(--slate)}
+.inq-alert .btn{flex:none}
+
 /* ---------- 문의함 ---------- */
 aside nav a .n.red{background:var(--danger);color:#fff}
 .inq-tbl{width:100%;border-collapse:collapse;font-size:13px}

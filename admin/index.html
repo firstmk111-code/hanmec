@@ -112,6 +112,14 @@
 
     <!-- ---------- 대시보드 ---------- -->
     <section class="panel on" data-panel="dash">
+      <div class="inq-alert" id="inqAlert" hidden>
+        <span class="ic">✉</span>
+        <div class="tx">
+          <b id="inqAlertTitle">새로 들어온 문의가 있습니다</b>
+          <span id="inqAlertSub">홈페이지 온라인 문의로 접수된 내용입니다.</span>
+        </div>
+        <button class="btn primary" data-goto="inq">문의함 열기</button>
+      </div>
       <div class="stat-grid" id="stats"></div>
       <div class="card">
         <h3>빠른 작업</h3>
