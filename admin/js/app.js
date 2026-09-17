@@ -2828,7 +2828,8 @@
       bar.hidden = false;
       bar.classList.toggle('off', !m.on);
       if (m.on) {
-        tx.textContent = '새 문의가 들어오면 ' + m.to + ' 로 알림 메일이 갑니다.';
+        tx.textContent = '새 문의가 들어오면 ' + m.to + ' 로 알림 메일이 갑니다.' +
+          (m.from ? '  (보내는 주소: ' + m.from + ')' : '');
         btn.hidden = false;
       } else {
         tx.textContent = '알림 메일이 아직 연결되어 있지 않습니다. 이 화면에서 직접 확인해 주세요.';
