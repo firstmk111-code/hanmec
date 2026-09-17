@@ -1153,13 +1153,21 @@
   var FILE_DIR = 'files/';
   var FILE_OK = /\.(pdf|hwp|hwpx|docx?|xlsx?|pptx?|zip|txt|jpg|jpeg|png)$/i;
 
-  /** 파일명을 주소로 쓸 수 있게 정리한다 (한글·공백은 날짜+번호로 대체) */
-  function safeFileName(name) {
+  /** 저장소에 넣을 이름. 주소로 쓰이므로 영문·숫자만 남긴다.
+      보이는 이름과 내려받는 이름은 원본 그대로 쓰므로(아래 download 속성)
+      여기서 한글이 빠지는 것은 방문자에게 드러나지 않는다. */
+  function safeFileName(name, hint) {
     var dot = name.lastIndexOf('.');
     var base = dot > 0 ? name.slice(0, dot) : name;
     var ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : 'dat';
     var clean = base.replace(/[^A-Za-z0-9._-]/g, '').slice(0, 40);
-    return (clean || 'file') + '-' + stampNow() + '.' + ext;
+    return (clean || hint || 'file') + '-' + stampNow() + '.' + ext;
+  }
+
+  /** 파일명에서 확장자만 (대문자로) */
+  function fileExt(name) {
+    var m = String(name || '').match(/\.([A-Za-z0-9]+)$/);
+    return m ? m[1].toUpperCase() : '';
   }
 
   function readFileAsBase64(file) {
@@ -1174,12 +1182,24 @@
     });
   }
 
-  /** 파일을 고르게 하고, 발행 때 함께 올라가도록 등록한다. then(info) */
-  function pickAttachment() {
+  /** 파일을 고르게 하고, 발행 때 함께 올라가도록 등록한다. then(info)
+      sub: 'notice' | 'archive' — 게시판별로 폴더를 나눠 담는다. */
+  function pickAttachment(sub) {
+    var dir = FILE_DIR + (sub ? sub + '/' : '');
     return new Promise(function (resolve) {
       var input = $('#filePicker');
       input.value = '';
+      // 같은 칸을 사진 고르기와 함께 쓰므로, 문서도 보이도록 잠시 바꿨다가 되돌린다
+      var keep = input.getAttribute('accept');
+      input.setAttribute('accept', '.pdf,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.jpg,.jpeg,.png');
+      function restore() { if (keep) input.setAttribute('accept', keep); else input.removeAttribute('accept'); }
+      // 고르지 않고 창을 닫으면 onchange 가 오지 않으므로 돌아올 때도 되돌린다
+      window.addEventListener('focus', function once() {
+        window.removeEventListener('focus', once);
+        setTimeout(restore, 300);
+      });
       input.onchange = function () {
+        restore();
         var f = input.files[0];
         if (!f) return resolve(null);
         if (!FILE_OK.test(f.name)) {
@@ -1193,7 +1213,7 @@
         busy(true, '파일 준비 중…');
         readFileAsBase64(f).then(function (b64) {
           busy(false);
-          var path = FILE_DIR + safeFileName(f.name);
+          var path = dir + safeFileName(f.name, sub);
           S.imgChanges['__new__' + path] = {
             newPath: path, base64: b64, previewUrl: '', fileName: f.name, isNew: true
           };
@@ -1202,6 +1222,45 @@
       };
       input.click();
     });
+  }
+
+  /* ---------- 게시판 정렬 ----------
+     1순위 상단 고정, 2순위 최신 등록일.
+     날짜가 같으면 손댄 순서를 그대로 둔다(자료실 ▲▼ 가 그래서 아직 쓸모 있다). */
+
+  function dateKey(s) {
+    var m = String(s || '').match(/(\d{4})\D{1,2}(\d{1,2})\D{1,2}(\d{1,2})/);
+    return m ? (+m[1]) * 10000 + (+m[2]) * 100 + (+m[3]) : -1;   // 날짜가 없으면 맨 뒤
+  }
+
+  function sortBoard(list) {
+    return list.map(function (it, i) { return { it: it, i: i }; })
+      .sort(function (a, b) {
+        var pa = a.it.pin ? 1 : 0, pb = b.it.pin ? 1 : 0;
+        if (pa !== pb) return pb - pa;                       // 고정이 먼저
+        var da = dateKey(a.it.date), db = dateKey(b.it.date);
+        if (da !== db) return db - da;                       // 최신이 먼저
+        return a.i - b.i;                                    // 나머지는 원래 순서
+      })
+      .map(function (x) { return x.it; });
+  }
+
+  /** 조각 HTML 에서 사람이 읽는 글자만 뽑는다 */
+  function htmlToText(frag) {
+    return String(frag || '')
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+      .trim();
+  }
+
+  /** 홈페이지에 넣을 첨부 링크. 원본 이름 그대로 보이고, 그 이름으로 내려받게 한다. */
+  function attachLink(file, fileName, style, prefix) {
+    if (!file) return '';
+    var shown = fileName || file.split('/').pop();
+    return '<a href="' + esc(file) + '" download="' + esc(shown) + '"' +
+      ' data-name="' + esc(fileName || '') + '" style="' + style + '"' +
+      ' title="' + esc(shown) + ' 내려받기">' + (prefix || '') + esc(shown) + '</a>';
   }
 
   /** 업로드 이미지를 필요 시 축소·압축하고 base64 로 만든다. */
@@ -2203,10 +2262,12 @@
       var tds = tr.children.filter(function (c) { return c.tag === 'td'; });
       var pin = SiteDoc.attrOf(tr, 'data-pin') === '1';
 
-      // 제목 칸: 첨부 링크를 빼고 남은 글자가 제목
+      // 제목 칸 = 첨부 링크를 통째로 들어낸 나머지 글자.
+      // (링크 글자가 예전엔 "첨부파일", 지금은 실제 파일명이라 글자로 판별하지 않는다)
       var titleTd = tds[1];
-      var link = titleTd ? findNode(html.slice(titleTd.start, titleTd.end), function (n) { return n.tag === 'a'; }) : null;
-      var title = titleTd ? SiteDoc.textOf(titleTd).replace(/\s*첨부파일\s*$/, '').trim() : '';
+      var tdFrag = titleTd ? html.slice(titleTd.contentStart, titleTd.contentEnd) : '';
+      var link = titleTd ? findNode(tdFrag, function (n) { return n.tag === 'a'; }) : null;
+      var title = htmlToText(link ? tdFrag.slice(0, link.start) + tdFrag.slice(link.end) : tdFrag);
 
       var v = tds.map(function (td) { return SiteDoc.textOf(td).trim(); });
       return {
@@ -2224,16 +2285,14 @@
   function noticeWrite(rows) {
     var m = noticeModel();
     if (!m) return;
-    // 고정한 글을 맨 위로 (같은 무리 안에서는 손댄 순서 유지)
-    var sorted = rows.filter(function (r) { return r.pin; }).concat(rows.filter(function (r) { return !r.pin; }));
+    // 고정이 먼저, 그 다음 최신 등록일
+    var sorted = sortBoard(rows);
 
     var body = sorted.map(function (r) {
       var no = r.pin
         ? '<span style="' + PIN_BADGE + '">공지</span>'
         : esc(r.no || '—');
-      var file = r.file
-        ? '<a href="' + esc(r.file) + '" download data-name="' + esc(r.fileName || '') + '" style="' + FILE_LINK + '">첨부파일</a>'
-        : '';
+      var file = attachLink(r.file, r.fileName, FILE_LINK, '📎 ');
       return '<tr' + (r.pin ? ' data-pin="1"' : '') + ' style="' + (r.pin ? TR_PIN : TR_S) + '">' +
         '<td style="' + TD_C + '">' + no + '</td>' +
         '<td style="' + TD_T + '">' + esc(r.title || '') + file + '</td>' +
@@ -2276,7 +2335,16 @@
         toast(pin.checked ? '맨 위에 고정했습니다.' : '고정을 해제했습니다.', 'ok');
       });
 
-      /* 첨부 파일 */
+      /* 첨부 파일 — 올리기 · 바꾸기 · 빼기 */
+      function setNoticeFile(f) {
+        var rows = noticeModel().rows;
+        rows[i].file = f ? f.path : '';
+        rows[i].fileName = f ? f.name : '';
+        noticeWrite(rows); renderNotice();
+        toast(f ? '“' + f.name + '” 을 붙였습니다. 발행하면 홈페이지에서 내려받을 수 있습니다.' : '첨부를 뺐습니다.',
+          'ok', f ? 5000 : 2500);
+      }
+
       var fileCell = el('div', { class: 'att' });
       if (r.file) {
         fileCell.appendChild(el('a', {
@@ -2284,26 +2352,17 @@
           text: r.fileName || r.file.split('/').pop()
         }));
         fileCell.appendChild(el('button', {
+          class: 'btn sm', text: '바꾸기', title: '다른 파일로 교체',
+          onclick: function () { pickAttachment('notice').then(function (f) { if (f) setNoticeFile(f); }); }
+        }));
+        fileCell.appendChild(el('button', {
           class: 'att-x', text: '×', title: '첨부 삭제',
-          onclick: function () {
-            var rows = noticeModel().rows;
-            rows[i].file = ''; rows[i].fileName = '';
-            noticeWrite(rows); renderNotice();
-            toast('첨부를 뺐습니다.');
-          }
+          onclick: function () { setNoticeFile(null); }
         }));
       } else {
         fileCell.appendChild(el('button', {
           class: 'btn sm', text: '+ 파일',
-          onclick: function () {
-            pickAttachment().then(function (f) {
-              if (!f) return;
-              var rows = noticeModel().rows;
-              rows[i].file = f.path; rows[i].fileName = f.name;
-              noticeWrite(rows); renderNotice();
-              toast('“' + f.name + '” 을 붙였습니다. 발행하면 홈페이지에서 내려받을 수 있습니다.', 'ok', 5000);
-            });
-          }
+          onclick: function () { pickAttachment('notice').then(function (f) { if (f) setNoticeFile(f); }); }
         }));
       }
 
@@ -2429,8 +2488,8 @@
   function archiveWrite(cards) {
     var m = archiveModel();
     if (!m) return;
-    // 고정한 자료를 앞으로
-    var sorted = cards.filter(function (c) { return c.pin; }).concat(cards.filter(function (c) { return !c.pin; }));
+    // 고정이 먼저, 그 다음 최신 등록일 (같은 날짜면 손댄 순서 유지)
+    var sorted = sortBoard(cards);
     var html = S.doc.pageHtml('archive');
     S.doc.setPageHtml('archive', html.slice(0, m.node.contentStart) + sorted.map(archiveCardHtml).join('') + html.slice(m.node.contentEnd));
     refreshBlocks('archive');
@@ -2520,10 +2579,26 @@
       ]);
 
       /* 첨부 파일 — 올리면 형식·용량을 자동으로 채운다 */
+      function takeArchiveFile() {
+        pickAttachment('archive').then(function (f) {
+          if (!f) return;
+          save(i, {
+            file: f.path, fileName: f.name,
+            ext: fileExt(f.name),
+            size: fmtSize(f.size)
+          }, true);
+          toast('“' + f.name + '” 을 붙였습니다. 파일 형식·용량은 자동으로 채웠고, 발행하면 내려받을 수 있습니다.', 'ok', 5000);
+        });
+      }
+
       var fileCell = el('div', { class: 'att' }, c.file ? [
         el('a', {
           class: 'att-name', href: assetUrl(c.file), target: '_blank', rel: 'noopener',
           text: c.fileName || c.file.split('/').pop()
+        }),
+        el('button', {
+          class: 'btn sm', text: '바꾸기', title: '다른 파일로 교체',
+          onclick: takeArchiveFile
         }),
         el('button', {
           class: 'att-x', text: '×', title: '첨부 삭제',
@@ -2533,21 +2608,7 @@
           }
         })
       ] : [
-        el('button', {
-          class: 'btn sm', text: '+ 파일 올리기',
-          onclick: function () {
-            pickAttachment().then(function (f) {
-              if (!f) return;
-              var dot = f.name.lastIndexOf('.');
-              save(i, {
-                file: f.path, fileName: f.name,
-                ext: dot > 0 ? f.name.slice(dot + 1).toUpperCase() : '',
-                size: fmtSize(f.size)
-              }, true);
-              toast('“' + f.name + '” 을 붙였습니다. 파일 형식·용량은 자동으로 채웠고, 발행하면 내려받을 수 있습니다.', 'ok', 5000);
-            });
-          }
-        })
+        el('button', { class: 'btn sm', text: '+ 파일 올리기', onclick: takeArchiveFile })
       ]);
 
       host.appendChild(el('div', { class: 'item' + (c.pin ? ' is-pin' : '') }, [
