@@ -606,9 +606,6 @@
      · 이미 전용 화면이 있는 자리        → 그 화면으로 안내만
      페이지 이름을 코드에 적어두지 않고 SiteDoc 이 찾아낸 구조를 그대로 쓴다. */
 
-  // 이 수보다 적게 남기면 그 자리를 관리자에서 다룰 수 없게 되므로 삭제를 막는다
-  var MIN_ITEMS = SiteDoc.MIN_GALLERY_ITEMS || 2;
-
   // 전용 관리 화면이 따로 있는 페이지 (중복 구현 금지)
   var MANAGED_BY = {
     archive: { nav: 'board', name: '공지사항 · 자료실' },
@@ -723,7 +720,7 @@
     var fPage = $('#imgFPage').value, fArea = $('#imgFArea').value, fCat = $('#imgFCat').value;
     var host = $('#imgAreas');
     host.innerHTML = '';
-    var shown = 0;
+    var shown = 0, boxes = 0;
 
     areas.filter(function (a) {
       if (a.group !== S.curImgTab) return false;
@@ -735,11 +732,14 @@
       var node = a.type === 'single' ? renderSingleArea(a, q, onlyChanged) : renderGalleryArea(a, q, onlyChanged);
       if (!node) return;
       shown += node.__count;
+      boxes++;
       host.appendChild(node);
     });
 
     $('#imgCount').textContent = shown + '개 표시';
-    if (!shown) host.innerHTML = '<div class="empty">해당하는 이미지가 없습니다.</div>';
+    /* 이미지가 0장이어도 '빈 자리' 상자는 남겨 둬야 한다.
+       그래야 다 지운 분류에 다시 넣을 수 있다. 상자까지 하나도 없을 때만 안내로 바꾼다. */
+    if (!boxes) host.innerHTML = '<div class="empty">해당하는 이미지가 없습니다.</div>';
   }
 
   function areaHead(a, count, extra) {
@@ -788,7 +788,10 @@
       if (q && (it.text + ' ' + it.src).toLowerCase().indexOf(q) < 0) return false;
       return true;
     });
-    if (!hit.length) return null;
+    /* 텅 빈 자리도 보여 준다. 그래야 다 지운 분류에 다시 넣을 수 있다.
+       (검색·필터 중일 때는 조건에 안 맞는 자리이므로 숨긴다) */
+    var isEmpty = a.items.length === 0;
+    if (!hit.length && !(isEmpty && !q && !onlyChanged)) return null;
 
     var addBtn = null;
     if (a.type === 'managed') {
@@ -803,9 +806,38 @@
       });
     }
 
+    /* 체크 상자로 여러 개를 골라 한 번에 지우는 줄 */
+    var tools = null;
+    if (a.type === 'gallery' && a.items.length) {
+      var allChk = el('input', { type: 'checkbox' });
+      allChk.addEventListener('change', function () {
+        galSel[a.id] = {};
+        if (allChk.checked) a.items.forEach(function (_, i) { galSel[a.id][i] = 1; });
+        renderImageGrid();
+      });
+      tools = el('div', { class: 'ia-tools' }, [
+        el('label', { class: 'ia-allchk' }, [allChk, el('span', { text: '전체 선택' })]),
+        el('button', {
+          class: 'btn sm danger ia-delsel', text: '선택 삭제 (0)', hidden: true,
+          onclick: function () { removeSelectedDialog(a); }
+        })
+      ]);
+    }
+
     var box = el('div', { class: 'ia' }, [areaHead(a, a.items.length, addBtn)]);
+    box.setAttribute('data-area', a.id);
     if (a.type === 'managed') {
       box.appendChild(el('p', { class: 'ia-note', text: '이 자리는 ‘' + a.managed.name + '’ 화면에서 글·이미지를 함께 관리합니다. 여기서는 이미지 교체만 하실 수 있습니다.' }));
+    }
+    if (tools) box.appendChild(tools);
+
+    if (isEmpty) {
+      box.appendChild(el('div', { class: 'ia-empty' }, [
+        el('b', { text: '이 분류에는 아직 이미지가 없습니다.' }),
+        el('span', { text: '오른쪽 위 ‘' + (a.kind === 'card' ? '+ 콘텐츠 추가' : '+ 이미지 추가') + '’ 로 넣어 주세요.' })
+      ]));
+      box.__count = 0;
+      return box;
     }
 
     var grid = el('div', { class: 'img-grid' });
@@ -815,6 +847,7 @@
     });
     box.appendChild(grid);
     box.__count = hit.length;
+    if (tools) setTimeout(function () { syncGalSel(a); }, 0);
     return box;
   }
 
@@ -847,11 +880,26 @@
       nameBox = el('div', { class: 'lb', text: it.text || it.alt || '(설명 없음)' });
     }
 
-    return el('div', { class: 'img-card' + (ch ? ' changed' : '') }, [
+    /* 체크해서 여러 개를 한 번에 지울 수 있게 한다 */
+    var pick = null;
+    if (canEdit) {
+      var cb = el('input', { type: 'checkbox', title: '선택' });
+      cb.checked = !!(galSel[a.id] && galSel[a.id][idx]);
+      cb.addEventListener('change', function () {
+        galSel[a.id] = galSel[a.id] || {};
+        if (cb.checked) galSel[a.id][idx] = 1; else delete galSel[a.id][idx];
+        card.classList.toggle('picked', cb.checked);
+        syncGalSel(a);
+      });
+      pick = el('label', { class: 'ia-pick', title: '선택' }, [cb]);
+    }
+
+    var card = el('div', { class: 'img-card' + (ch ? ' changed' : '') + (pick && pick.firstChild.checked ? ' picked' : '') }, [
       el('div', { class: 'thumb' }, [
         el('img', { src: src, loading: 'lazy', decoding: 'async', alt: '' }),
         ch ? el('span', { class: 'flag', text: '교체됨' }) : null,
-        el('span', { class: 'ord', text: (idx + 1) + '번째' })
+        el('span', { class: 'ord', text: (idx + 1) + '번째' }),
+        pick
       ]),
       el('div', { class: 'img-meta' }, [
         nameBox,
@@ -862,8 +910,6 @@
         el('button', { class: 'btn sm primary', text: ch ? '다시 교체' : '교체', onclick: function () { pickImage(im); } }),
         canEdit ? el('button', {
           class: 'btn sm danger', text: '삭제',
-          disabled: a.items.length <= MIN_ITEMS ? 'disabled' : null,
-          title: a.items.length <= MIN_ITEMS ? '이 자리는 최소 ' + MIN_ITEMS + '장을 남겨 두셔야 합니다.' : null,
           onclick: function () { removeGalleryDialog(a, idx); }
         }) : null,
         canEdit ? el('div', { class: 'ia-move' }, [
@@ -874,6 +920,69 @@
         ]) : null
       ])
     ]);
+    return card;
+  }
+
+  /* ---------- 체크해서 한 번에 지우기 ---------- */
+
+  /** 자리별로 체크해 둔 번호. 항목이 바뀌면 비운다 (번호가 밀리기 때문) */
+  var galSel = {};
+
+  function selectedIdx(a) {
+    return Object.keys(galSel[a.id] || {}).map(Number)
+      .filter(function (i) { return i >= 0 && i < a.items.length; })
+      .sort(function (x, y) { return x - y; });
+  }
+
+  /** 머리말의 '전체 선택' 과 '선택 삭제' 단추 상태를 맞춘다 */
+  function syncGalSel(a) {
+    var host = document.querySelector('[data-area="' + cssEsc(a.id) + '"]');
+    if (!host) return;
+    var sel = selectedIdx(a);
+    var btn = host.querySelector('.ia-delsel');
+    if (btn) {
+      btn.hidden = sel.length === 0;
+      btn.textContent = '선택 삭제 (' + sel.length + ')';
+    }
+    var all = host.querySelector('.ia-allchk input');
+    if (all) {
+      all.checked = a.items.length > 0 && sel.length === a.items.length;
+      all.indeterminate = sel.length > 0 && sel.length < a.items.length;
+      all.disabled = a.items.length === 0;
+    }
+  }
+
+  function cssEsc(s) { return String(s).replace(/["\\]/g, '\\$&'); }
+
+  /** 고른 것들을 한 번에 지운다 */
+  function removeSelectedDialog(a) {
+    var sel = selectedIdx(a);
+    if (!sel.length) return;
+    var items = sel.map(function (i) { return a.items[i]; });
+
+    var body = el('div', {}, [
+      el('p', {}, [
+        el('b', { text: a.crumb.join(' > ') }),
+        document.createTextNode(' 에서 ' + sel.length + '개를 삭제합니다.')
+      ]),
+      el('div', { class: 'ia-dellist' }, items.map(function (it, k) {
+        return el('div', { class: 'ia-delitem' }, [
+          el('img', { src: assetUrl(it.src), alt: '' }),
+          el('span', { text: (sel[k] + 1) + '번째 · ' + (it.text || it.alt || it.src.split('/').pop()) })
+        ]);
+      })),
+      sel.length === a.items.length
+        ? el('p', { class: 'hint', style: 'margin-top:12px', text: '이 분류의 이미지를 모두 지웁니다. 자리는 그대로 남아 있어서 뒤에 다시 넣으실 수 있습니다.' })
+        : null,
+      el('p', { class: 'hint', style: 'margin-top:10px', text: '발행 전이라면 ‘변경 취소’로 되돌릴 수 있습니다.' })
+    ]);
+
+    confirmBox('선택한 이미지 삭제', body, '삭제하기', { okDanger: true }).then(function (ok) {
+      if (!ok) return;
+      if (!S.doc.removeGalleryItems(a.id, sel)) { toast('삭제하지 못했습니다.', 'err'); return; }
+      delete galSel[a.id];
+      afterGalleryChange(sel.length + '개를 삭제했습니다. 발행하면 홈페이지에 반영됩니다.');
+    });
   }
 
   /** 교체만 가능한 이미지 카드 (기존 동작 그대로) */
@@ -925,14 +1034,15 @@
         document.createTextNode(' 영역의 ' + (idx + 1) + '번째로 사용 중입니다.')
       ]),
       it.text ? el('p', { class: 'hint', style: 'margin-top:6px', text: '내용: ' + it.text }) : null,
+      a.items.length === 1
+        ? el('p', { class: 'hint', style: 'margin-top:10px', text: '이 분류의 마지막 이미지입니다. 지워도 자리는 남아 있어서 뒤에 다시 넣으실 수 있습니다.' })
+        : null,
       el('p', { class: 'hint', style: 'margin-top:10px', text: '삭제하면 홈페이지에서 이 항목이 사라집니다. 발행 전이라면 ‘변경 취소’로 되돌릴 수 있습니다.' })
     ]);
     confirmBox('이미지 삭제', body, '삭제하기').then(function (ok) {
       if (!ok) return;
-      if (!S.doc.removeGalleryItem(a.id, idx)) {
-        toast('이 자리는 최소 ' + MIN_ITEMS + '장을 남겨 두셔야 합니다. 더 줄이려면 제작사에 문의해 주세요.', 'err', 6000);
-        return;
-      }
+      if (!S.doc.removeGalleryItem(a.id, idx)) { toast('삭제하지 못했습니다.', 'err'); return; }
+      delete galSel[a.id];
       afterGalleryChange('삭제되었습니다. 발행하면 홈페이지에 반영됩니다.');
     });
   }

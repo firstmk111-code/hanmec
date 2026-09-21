@@ -769,6 +769,22 @@
     return slots;
   }
 
+  /* 우리가 관리하는 자리에 남겨 두는 표시.
+       data-gal    이 자리는 "여러 장이 늘어서는 자리" 라는 표시 (값은 항목의 생김새)
+       data-gal-t  항목 한 개의 원본 (다 지웠다가 다시 넣을 때 본으로 쓴다)
+     이 표시가 있으면 항목이 0개가 되어도 자리를 계속 알아볼 수 있다.
+     둘 다 화면에 아무것도 그리지 않는 값이라 디자인에는 영향이 없다. */
+  var GAL_ATTR = 'data-gal';
+  var GAL_TPL = 'data-gal-t';
+
+  /** 여는 태그에 자리 표시를 새로 써 넣는다 */
+  function tagContainer(openTag, shape, tpl) {
+    var t = openTag.replace(/\s+data-gal(?:-t)?\s*=\s*("[^"]*"|'[^']*')/g, '');
+    var add = ' ' + GAL_ATTR + '="' + esc(shape) + '"' +
+      (tpl ? ' ' + GAL_TPL + '="' + esc(tpl) + '"' : '');
+    return t.replace(/\s*\/?>\s*$/, function (m) { return add + m; });
+  }
+
   /** 페이지 안의 갤러리들. 컨테이너 위치는 "몇 번째 자식" 경로로 기억해 편집 후에도 찾을 수 있다. */
   function scanGalleries(html, pageKey, pageName) {
     if (!html) return [];
@@ -777,6 +793,45 @@
 
     (function walk(node, path) {
       var kids = elChildren(node);
+
+      /* (1) 우리가 표시해 둔 자리. 항목이 0개여도 자리로 인정한다.
+             안쪽 아이들은 전부 "항목" 이므로 더 파고들지 않는다. */
+      var mark = attrOf(node, GAL_ATTR);
+      if (mark) {
+        var tpl = decodeEntities(attrOf(node, GAL_TPL) || '');
+        var mItems = kids.map(function (k) {
+          var im = imagesInside(k, html)[0];
+          return {
+            src: im ? im.src : '',
+            alt: im ? (attrOf(im.node, 'alt') || '') : '',
+            text: sliceText(html, k.contentStart, k.contentEnd),
+            start: k.start, end: k.end
+          };
+        });
+        if (!tpl && mItems.length) tpl = html.slice(mItems[0].start, mItems[0].end);
+        var mLen = mItems.reduce(function (a, it) { return Math.max(a, it.text.length); }, 0);
+        found.push({
+          page: pageKey,
+          pageName: pageName,
+          path: path.join('-') + '|' + mark,
+          shape: mark,
+          area: areaLabel(node, html, root),
+          category: paneLabel(node, html, root),
+          kind: mLen === 0 ? 'plain' : (mLen <= 40 ? 'captioned' : 'card'),
+          items: mItems,
+          slots: kids.length
+            ? textSlots(kids[0], html).map(function (s) { return s.text; })
+            : (tpl ? textSlots(parseNodes(tpl), tpl).map(function (s) { return s.text; }) : []),
+          tpl: tpl,
+          explicit: true,
+          cStart: node.start, cContentStart: node.contentStart, cContentEnd: node.contentEnd,
+          // 항목이 없으면 컨테이너 속을 통째로 자리로 본다 (어차피 비어 있다)
+          spanStart: mItems.length ? mItems[0].start : node.contentStart,
+          spanEnd: mItems.length ? mItems[mItems.length - 1].end : node.contentEnd
+        });
+        return;
+      }
+
       var byShape = {};
       kids.forEach(function (k, i) {
         var s = classSig(k);
@@ -815,6 +870,10 @@
           kind: maxLen === 0 ? 'plain' : (maxLen <= 40 ? 'captioned' : 'card'),
           items: items,
           slots: textSlots(group[0].node, html).map(function (s) { return s.text; }),
+          tpl: html.slice(items[0].start, items[0].end),
+          explicit: false,
+          // 처음 손댈 때 이 자리에 표시를 남길 수 있도록 컨테이너 위치도 기억해 둔다
+          cStart: node.start, cContentStart: node.contentStart, cContentEnd: node.contentEnd,
           // 항목들이 차지한 구간만 바꾼다 (컨테이너 안의 다른 요소는 그대로 둔다)
           spanStart: items[0].start,
           spanEnd: items[items.length - 1].end
@@ -892,12 +951,24 @@
     var seen = {};
     all.forEach(function (g) {
       var fp = g.shape + '::' + g.items.map(function (i) { return i.src; }).join(',');
-      if (seen[fp] !== undefined) {
-        byFingerprint[seen[fp]].places.push({ page: g.page, path: g.path });
-        if (byFingerprint[seen[fp]].pageNames.indexOf(g.pageName) < 0) byFingerprint[seen[fp]].pageNames.push(g.pageName);
+
+      /* 이 합치기는 "같은 블록이 여러 페이지에 똑같이 들어간 경우" 를 위한 것이다.
+         한 페이지 안의 서로 다른 자리는 절대 합치면 안 된다.
+         (인증현황처럼 분류 세 곳이 모두 비면 생김새도 내용도 같아져서
+          자칫 한 자리로 뭉쳐 버린다 — 그러면 분류별로 넣을 수 없다) */
+      var cands = seen[fp] || (seen[fp] = []);
+      var hit = -1;
+      for (var c = 0; c < cands.length; c++) {
+        var cand = byFingerprint[cands[c]];
+        var samePage = cand.places.some(function (p) { return p.page === g.page; });
+        if (!samePage) { hit = cands[c]; break; }
+      }
+      if (hit >= 0) {
+        byFingerprint[hit].places.push({ page: g.page, path: g.path });
+        if (byFingerprint[hit].pageNames.indexOf(g.pageName) < 0) byFingerprint[hit].pageNames.push(g.pageName);
         return;
       }
-      seen[fp] = byFingerprint.length;
+      cands.push(byFingerprint.length);
       g.places = [{ page: g.page, path: g.path }];
       g.pageNames = [g.pageName];
       byFingerprint.push(g);
@@ -916,6 +987,7 @@
           page: g.page, pageName: g.pageName, pageNames: g.pageNames,
           area: g.area, category: g.category, shape: g.shape,
           kind: g.kind, slots: g.slots,
+          tpl: g.tpl, explicit: g.explicit,
           id: g.page + '::' + g.path,
           places: g.places,
           parts: [{ places: g.places, count: g.items.length }],
@@ -926,6 +998,7 @@
       var m = merged[byArea[key]];
       m.parts.push({ places: g.places, count: g.items.length });
       g.items.forEach(function (i) { m.items.push(i); });
+      if (!m.tpl && g.tpl) m.tpl = g.tpl;
     });
     return merged;
   };
@@ -994,20 +1067,45 @@
     var byPage = {};
     writes.forEach(function (w) { (byPage[w.place.page] = byPage[w.place.page] || []).push(w); });
 
+    /* 항목 한 개의 본.
+       항목이 2개 이상이면 남아 있는 것을 본떠 만들 수 있으므로 본을 따로 두지 않는다
+       (홈페이지 파일이 괜히 커지지 않게).
+       1개 이하로 줄어들 때만 본을 남겨 둔다 — 그래야 "전부 지웠다가 다시 넣기" 가 된다. */
+    var keepTpl = nextItems.length >= 2
+      ? ''
+      : ((nextItems.length ? nextItems[0].source : '') || g.tpl || '');
+
     Object.keys(byPage).forEach(function (page) {
       var html = self.pageHtml(page);
       var list = scanGalleries(html, page, self.pageName(page));
       var jobs = [];
       byPage[page].forEach(function (w) {
         for (var i = 0; i < list.length; i++) {
-          if (list[i].path === w.place.path) { jobs.push({ start: list[i].spanStart, end: list[i].spanEnd, body: w.body }); break; }
+          if (list[i].path !== w.place.path) continue;
+          var hit = list[i];
+          jobs.push({ start: hit.spanStart, end: hit.spanEnd, body: w.body });
+          // 이 자리라는 표시를 여는 태그에 남긴다 (항목이 0개가 되어도 다시 찾을 수 있게)
+          if (hit.cStart !== undefined && hit.cContentStart !== undefined) {
+            jobs.push({
+              start: hit.cStart, end: hit.cContentStart,
+              body: tagContainer(html.slice(hit.cStart, hit.cContentStart), hit.shape, keepTpl)
+            });
+          }
+          break;
         }
       });
+      // 한 페이지 안에서 여러 구간을 고치므로 뒤에서부터 써야 위치가 밀리지 않는다
       jobs.sort(function (a, b) { return b.start - a.start; });
       jobs.forEach(function (j) { html = html.slice(0, j.start) + j.body + html.slice(j.end); });
       self.setPageHtml(page, html);
     });
     return true;
+  };
+
+  /** 이 자리에 쓰는 항목 한 개의 본 (다 비었을 때 새로 만들 때 쓴다) */
+  SiteDoc.prototype.galleryTemplate = function (id) {
+    var g = this.findGallery(id);
+    return g ? (g.tpl || '') : '';
   };
 
   /** 갤러리의 현재 항목들을 원문 조각과 함께 가져온다 (여러 줄이면 이어 붙여서) */
@@ -1034,23 +1132,37 @@
   /** 새 이미지(+글)를 맨 뒤에 추가 */
   SiteDoc.prototype.addGalleryItem = function (id, src, texts) {
     var items = this.galleryItems(id);
-    if (!items.length) return false;
-    // 마지막 항목의 원문을 그대로 본떠서 만든다 (오프셋에 기대지 않는다)
-    var sample = items[items.length - 1].source;
+    // 남아 있는 항목을 본뜬다. 하나도 없으면 이 자리에 기억해 둔 본을 쓴다.
+    var sample = items.length ? items[items.length - 1].source : this.galleryTemplate(id);
+    if (!sample) return false;
     items.push({ src: src, source: buildItem(sample, 0, sample.length, src, texts) });
     return this.writeGallery(id, items);
   };
 
-  /* 두 장 아래로는 줄이지 않는다.
-     한 장만 남으면 "여러 개가 늘어선 자리" 로 더 이상 인식되지 않아
-     관리자에서 그 자리를 다룰 수 없게 되기 때문이다. */
-  SiteDoc.MIN_GALLERY_ITEMS = 2;
+  /* 예전에는 두 장 아래로 줄이지 못하게 막았다.
+     한 장만 남으면 "여러 개가 늘어선 자리" 로 인식되지 않아 관리가 끊겼기 때문이다.
+     이제는 자리에 표시(data-gal)를 남겨 두므로 0장이 되어도 자리를 놓치지 않는다.
+     그래서 제한을 없앴다. */
+  SiteDoc.MIN_GALLERY_ITEMS = 0;
 
+  /** 한 항목 삭제. 마지막 한 장까지, 나아가 전부 비울 수도 있다. */
   SiteDoc.prototype.removeGalleryItem = function (id, index) {
+    return this.removeGalleryItems(id, [index]);
+  };
+
+  /** 여러 항목을 한 번에 삭제 (체크해서 고른 것들) */
+  SiteDoc.prototype.removeGalleryItems = function (id, indexes) {
     var items = this.galleryItems(id);
-    if (index < 0 || index >= items.length) return false;
-    if (items.length <= SiteDoc.MIN_GALLERY_ITEMS) return false;
-    items.splice(index, 1);
+    var drop = (indexes || []).filter(function (i) { return i >= 0 && i < items.length; });
+    if (!drop.length) return false;
+
+    /* 자리를 잃지 않으려면, 다 지우기 전에 "이 자리" 표시와 본이 있어야 한다.
+       표시가 없는 자리를 통째로 비우는 것은 막는다 (되돌릴 방법이 없어진다). */
+    var g = this.findGallery(id);
+    var leftover = items.length - drop.length;
+    if (leftover < 1 && !(g && (g.tpl || items.length))) return false;
+
+    drop.sort(function (a, b) { return b - a; }).forEach(function (i) { items.splice(i, 1); });
     return this.writeGallery(id, items);
   };
 
@@ -1085,14 +1197,14 @@
     if (fromId === toId) return false;
     var from = this.galleryItems(fromId);
     if (index < 0 || index >= from.length) return false;
-    if (from.length <= SiteDoc.MIN_GALLERY_ITEMS) return false;
 
     var moved = from[index];
     var to = this.galleryItems(toId);
-    if (!to.length) return false;
 
-    // 옮겨 갈 자리의 생김새로 다시 만든다 (분류마다 마크업이 조금씩 다를 수 있다)
-    var sample = to[to.length - 1].source;
+    // 옮겨 갈 자리의 생김새로 다시 만든다 (분류마다 마크업이 조금씩 다를 수 있다).
+    // 그 자리가 비어 있으면 그 자리에 기억해 둔 본을 쓴다.
+    var sample = to.length ? to[to.length - 1].source : this.galleryTemplate(toId);
+    if (!sample) return false;
     var texts = this.galleryItemTexts(fromId, index);
     to.push({ src: moved.src, source: buildItem(sample, 0, sample.length, moved.src, texts) });
 

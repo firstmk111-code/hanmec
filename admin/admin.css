@@ -254,6 +254,31 @@ aside nav a .n.red{background:var(--danger);color:#fff}
 .ia-move{display:flex;gap:4px;flex:none}
 .ia-move .btn{width:30px;padding:0;flex:none}
 
+/* ---------- 체크해서 한 번에 지우기 ---------- */
+.ia-tools{display:flex;align-items:center;gap:12px;margin:0 0 12px;padding:8px 12px;
+  background:#f7f9fc;border:1px solid var(--line);border-radius:8px}
+.ia-allchk{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;
+  color:var(--slate);cursor:pointer;user-select:none}
+.ia-allchk input{width:16px;height:16px;min-height:auto;accent-color:var(--brand);cursor:pointer}
+.ia-delsel{margin-left:auto}
+/* 사진 위 선택 상자 */
+.ia-pick{position:absolute;top:8px;left:8px;z-index:2;display:flex;align-items:center;justify-content:center;
+  width:26px;height:26px;background:rgba(255,255,255,.94);border:1px solid var(--line);
+  border-radius:7px;cursor:pointer;box-shadow:0 1px 4px rgba(16,32,64,.18)}
+.ia-pick input{width:16px;height:16px;min-height:auto;margin:0;accent-color:var(--brand);cursor:pointer}
+.img-card.picked .ia-pick{background:var(--brand);border-color:var(--brand)}
+
+/* 삭제 확인 창의 미리보기 목록 */
+.ia-dellist{margin-top:12px;max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.ia-delitem{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink)}
+.ia-delitem img{width:44px;height:44px;object-fit:cover;border:1px solid var(--line);border-radius:6px;flex:none}
+
+/* 텅 빈 분류 안내 */
+.ia-empty{display:flex;flex-direction:column;gap:4px;padding:26px 18px;text-align:center;
+  border:1.5px dashed var(--line);border-radius:10px;background:#fbfcfe}
+.ia-empty b{font-size:13.5px;color:var(--slate)}
+.ia-empty span{font-size:12.5px;color:var(--slate2)}
+
 /* 카드에서 이름 바로 고치기 */
 .img-meta .input.nm{width:100%;height:32px;min-height:32px;font-size:12.5px;font-weight:600;padding:0 8px}
 .img-meta .input.nm:focus{border-color:var(--brand)}
