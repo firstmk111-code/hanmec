@@ -864,8 +864,11 @@
     var nameBox;
     if (canEdit && a.slots.length === 1) {
       var inp = el('input', { class: 'input sm nm', value: it.text || '', placeholder: a.slots[0].slice(0, 24) });
+      // 이름이 칸보다 길면 다 보이지 않으므로, 마우스를 올리면 전체가 뜨게 한다
+      inp.title = it.text || '';
       inp.addEventListener('change', function () {
         var v = (inp.value || '').trim();
+        inp.title = v;
         if (v === (it.text || '')) return;
         if (!S.doc.updateGalleryItem(a.id, idx, [v])) { toast('고치지 못했습니다.', 'err'); return; }
         afterGalleryChange('이름을 바꿨습니다. 발행하면 홈페이지에 반영됩니다.');
