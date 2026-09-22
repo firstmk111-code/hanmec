@@ -863,15 +863,19 @@
        여러 칸이면 '내용 수정' 창을 연다. */
     var nameBox;
     if (canEdit && a.slots.length === 1) {
-      var inp = el('input', { class: 'input sm nm', value: it.text || '', placeholder: a.slots[0].slice(0, 24) });
-      // 이름이 칸보다 길면 다 보이지 않으므로, 마우스를 올리면 전체가 뜨게 한다
-      inp.title = it.text || '';
+      /* 이 칸이 실제로 고치는 것은 '글칸 한 개' 다.
+         it.text 는 항목 안 모든 글자를 이어붙인 요약이라, 그것을 넣으면
+         한 글자만 고쳐도 옆의 설명까지 제목 안으로 복사되어 버린다. */
+      var cur = (it.slotTexts && it.slotTexts[0] !== undefined) ? it.slotTexts[0] : (it.text || '');
+      var inp = el('input', { class: 'input sm nm', value: cur, placeholder: a.slots[0].slice(0, 24) });
+      // 글이 칸보다 길면 다 보이지 않으므로, 마우스를 올리면 전체가 뜨게 한다
+      inp.title = cur;
       inp.addEventListener('change', function () {
         var v = (inp.value || '').trim();
         inp.title = v;
-        if (v === (it.text || '')) return;
+        if (v === cur) return;
         if (!S.doc.updateGalleryItem(a.id, idx, [v])) { toast('고치지 못했습니다.', 'err'); return; }
-        afterGalleryChange('이름을 바꿨습니다. 발행하면 홈페이지에 반영됩니다.');
+        afterGalleryChange('내용을 바꿨습니다. 발행하면 홈페이지에 반영됩니다.');
       });
       nameBox = inp;
     } else if (canEdit && a.slots.length > 1) {

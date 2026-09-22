@@ -805,6 +805,7 @@
             src: im ? im.src : '',
             alt: im ? (attrOf(im.node, 'alt') || '') : '',
             text: sliceText(html, k.contentStart, k.contentEnd),
+            slotTexts: textSlots(k, html).map(function (s) { return s.text; }),
             start: k.start, end: k.end
           };
         });
@@ -855,7 +856,10 @@
           return {
             src: img.src,
             alt: attrOf(img.node, 'alt') || '',
+            // text 는 항목 안의 모든 글자를 이어붙인 것(요약용).
+            // 실제로 고칠 수 있는 칸은 slotTexts 이다. 둘을 섞으면 안 된다.
             text: sliceText(html, g.node.contentStart, g.node.contentEnd),
+            slotTexts: textSlots(g.node, html).map(function (s) { return s.text; }),
             start: g.node.start, end: g.node.end
           };
         });
