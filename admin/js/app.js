@@ -2001,7 +2001,7 @@
     var id = newProdId();
     var cat = S.curProdCat || PROD_CATS[0].value;
     prodMutate(function (arr) {
-      arr.push({ id: id, cat: cat, name: '새 제품', model: '', tagline: '', title: '', subtitle: '', badge: '', img: '', detailImg: '', desc: '', specs: [], feats: [], extraImg: '', extraImgPos: 'after-features' });
+      arr.push({ id: id, cat: cat, name: '새 제품', model: '', tagline: '', title: '', subtitle: '', badge: '', img: '', detailImg: '', desc: '', specs: [], feats: [], extraImg: '', extraImgs: [], extraImgPos: 'after-features' });
     });
     openProd(id);
     toast('새 제품이 만들어졌습니다. 내용을 채워 주세요.', 'ok');
@@ -2245,6 +2245,27 @@
     return '';
   }
 
+  /* ---- 추가 이미지: 여러 장 ----
+     예전 자료는 extraImg 에 한 장만 들어 있다. 읽을 때는 둘 다 받아 주고,
+     쓸 때는 extraImgs(목록) 를 기준으로 하되 extraImg 에도 첫 장을 남긴다.
+     (혹시 예전 홈페이지 파일이 캐시에 남아 있어도 한 장은 보이게) */
+  var EXTRA_MAX = 3;
+
+  function extraListOf(p) {
+    if (!p) return [];
+    if (p.extraImgs && p.extraImgs.length) return p.extraImgs.slice();
+    return p.extraImg ? [p.extraImg] : [];
+  }
+
+  /** 목록을 제품 자료에 써넣는다 */
+  function setExtraList(pid, list) {
+    prodMutate(function (arr) {
+      var o = arr[prodIndex(pid)];
+      o.extraImgs = list.slice();
+      o.extraImg = list[0] || '';
+    });
+  }
+
   /* 제품 상세페이지에 들어가는 추가 이미지 (위치는 아래에서 고른다) */
   function renderExtraImg() {
     var p = prodById(S.curDetail);
@@ -2252,36 +2273,38 @@
     if (!p || !host) return;
     host.innerHTML = '';
 
-    var src = p.extraImg || '';
-    var pending = src && S.imgChanges['__new__' + src];
+    var list = extraListOf(p);
 
-    host.appendChild(el('div', { class: 'dt-extrabox' }, [
-      el('div', { class: 'dt-extraprev' }, [
-        src ? el('img', { src: pending ? pending.previewUrl : assetUrl(src), alt: '', loading: 'lazy' })
-            : el('span', { class: 'dt-noimg', text: '등록된 이미지가 없습니다' })
-      ]),
-      el('div', { class: 'dt-extrainfo' }, [
-        el('div', {
-          class: 'dt-fn', style: 'margin:0 0 10px',
-          text: src ? src.split('/').pop() : '이미지를 등록하면 아래에서 고른 위치에 표시됩니다.'
-        }),
-        el('div', { class: 'row' }, [
+    if (!list.length) {
+      host.appendChild(el('div', { class: 'dt-extrabox' }, [
+        el('div', { class: 'dt-extraprev' }, [
+          el('span', { class: 'dt-noimg', text: '등록된 이미지가 없습니다' })
+        ]),
+        el('div', { class: 'dt-extrainfo' }, [
+          el('div', { class: 'dt-fn', style: 'margin:0 0 10px',
+            text: '이미지를 등록하면 아래에서 고른 위치에 표시됩니다. 최대 ' + EXTRA_MAX + '장까지 넣으실 수 있습니다.' }),
           el('button', {
-            class: 'btn primary', text: src ? '이미지 교체' : '이미지 추가',
-            onclick: function () { pickProdImage('extraImg', '추가', renderExtraImg); }
-          }),
-          src ? el('button', {
-            class: 'btn danger', text: '이미지 삭제',
-            onclick: function () {
-              if (!window.confirm('추가 이미지를 삭제할까요?')) return;
-              prodMutate(function (arr) { arr[prodIndex(p.id)].extraImg = ''; });
-              renderExtraImg();
-              toast('삭제되었습니다. 발행하면 홈페이지에 반영됩니다.');
-            }
-          }) : null
+            class: 'btn primary', text: '이미지 추가',
+            onclick: function () { addExtraImg(); }
+          })
         ])
-      ])
-    ]));
+      ]));
+    } else {
+      var grid = el('div', { class: 'dt-exgrid' });
+      list.forEach(function (src, i) {
+        grid.appendChild(extraCard(p, src, i, list.length));
+      });
+      host.appendChild(grid);
+
+      host.appendChild(el('div', { class: 'row', style: 'margin-top:14px' }, [
+        list.length < EXTRA_MAX
+          ? el('button', { class: 'btn primary', text: '+ 이미지 추가', onclick: function () { addExtraImg(); } })
+          : el('span', { class: 'hint', style: 'margin:0',
+              text: '최대 ' + EXTRA_MAX + '장까지 넣으실 수 있습니다. 더 넣으시려면 기존 이미지를 지워 주세요.' }),
+        el('span', { class: 'hint', style: 'margin:0 0 0 auto',
+          text: '현재 ' + list.length + '장 · 위에서부터 차례로 표시됩니다.' })
+      ]));
+    }
 
     /* ---- 노출 위치 선택 ---- */
     var cur = extraPosOf(p);
@@ -2308,7 +2331,7 @@
       ]));
     });
 
-    if (!src) {
+    if (!list.length) {
       wrap.appendChild(el('div', {
         class: 'hint', style: 'margin-top:10px',
         text: '※ 이미지를 등록해야 실제로 표시됩니다.'
@@ -2316,6 +2339,89 @@
     }
     host.appendChild(wrap);
   }
+
+  /** 추가 이미지 한 장 카드 (교체 · 삭제 · 순서) */
+  function extraCard(p, src, i, total) {
+    var pend = S.imgChanges['__new__' + src];
+    var ch = S.imgChanges[src];
+    var url = pend ? pend.previewUrl : (ch ? ch.previewUrl : assetUrl(src));
+
+    function move(to) {
+      if (to < 0 || to >= total) return;
+      var list = extraListOf(prodById(p.id));
+      var x = list.splice(i, 1)[0];
+      list.splice(to, 0, x);
+      setExtraList(p.id, list);
+      renderExtraImg();
+      toast('순서를 바꿨습니다. 발행하면 홈페이지에 반영됩니다.', 'ok');
+    }
+
+    return el('div', { class: 'dt-excard' }, [
+      el('div', { class: 'dt-exprev' }, [
+        el('img', { src: url, alt: '', loading: 'lazy' }),
+        el('span', { class: 'dt-exord', text: (i + 1) + '번째' })
+      ]),
+      el('div', { class: 'dt-exname', text: src.split('/').pop(), title: src }),
+      el('div', { class: 'dt-exact' }, [
+        el('button', {
+          class: 'btn sm primary', text: '교체',
+          onclick: function () { pickExtraImg(i); }
+        }),
+        el('button', {
+          class: 'btn sm danger', text: '삭제',
+          onclick: function () {
+            if (!window.confirm((i + 1) + '번째 추가 이미지를 삭제할까요?')) return;
+            var list = extraListOf(prodById(p.id));
+            list.splice(i, 1);
+            setExtraList(p.id, list);
+            renderExtraImg();
+            toast('삭제되었습니다. 발행하면 홈페이지에 반영됩니다.');
+          }
+        }),
+        el('div', { class: 'ia-move' }, [
+          el('button', { class: 'btn sm', text: '↑', title: '앞으로',
+            disabled: i === 0 ? 'disabled' : null, onclick: function () { move(i - 1); } }),
+          el('button', { class: 'btn sm', text: '↓', title: '뒤로',
+            disabled: i === total - 1 ? 'disabled' : null, onclick: function () { move(i + 1); } })
+        ])
+      ])
+    ]);
+  }
+
+  /** 파일을 골라 추가 이미지 목록에 넣는다. at 을 주면 그 자리를 교체한다. */
+  function pickExtraImgInto(at) {
+    var pid = S.curDetail;
+    var input = $('#filePicker');
+    input.value = '';
+    input.onchange = function () {
+      var f = input.files[0];
+      if (!f) return;
+      busy(true, '이미지 준비 중…');
+      processImage(f).then(function (r) {
+        busy(false);
+        var newPath = CONFIG.uploadDir + 'prod-' + stampNow() + '.' + r.ext;
+        S.imgChanges['__new__' + newPath] = {
+          newPath: newPath, base64: r.base64, previewUrl: r.dataUrl, fileName: r.name, isNew: true
+        };
+        S.changed.images++;
+        var list = extraListOf(prodById(pid));
+        if (at === undefined || at === null) {
+          if (list.length >= EXTRA_MAX) { toast('최대 ' + EXTRA_MAX + '장까지 넣으실 수 있습니다.', 'err'); return; }
+          list.push(newPath);
+        } else {
+          list[at] = newPath;
+        }
+        setExtraList(pid, list);
+        renderExtraImg();
+        toast(at === undefined || at === null
+          ? '추가 이미지를 넣었습니다. 발행하면 홈페이지에 반영됩니다.'
+          : (at + 1) + '번째 이미지를 교체했습니다.', 'ok');
+      }).catch(function (e) { busy(false); toast(e.message, 'err'); });
+    };
+    input.click();
+  }
+  function addExtraImg() { pickExtraImgInto(null); }
+  function pickExtraImg(at) { pickExtraImgInto(at); }
 
   function pickProdImage(field, label, after) {
     var id = S.curDetail;

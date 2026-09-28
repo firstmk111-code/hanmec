@@ -477,13 +477,21 @@
     // --- 제품 데이터 (목록 사진 / 상세 사진 / 색상 견본 / 사양 이미지)
     if (this.hasProducts()) {
       this.productsData().forEach(function (p) {
-        [['img', '목록 사진'], ['detailImg', '상세 사진'], ['colorImg', '색상 견본'], ['extraImg', '사양 이미지']]
+        [['img', '목록 사진'], ['detailImg', '상세 사진'], ['colorImg', '색상 견본']]
           .forEach(function (f) {
             var v = p[f[0]];
             if (v && /^images\//.test(v)) {
               add(v, { product: p.id, name: p.name }, p.name + ' — ' + f[1], 'products', 800);
             }
           });
+        // 추가 이미지는 여러 장이 될 수 있다 (예전 자료는 extraImg 한 개뿐)
+        var ex = (p.extraImgs && p.extraImgs.length) ? p.extraImgs : (p.extraImg ? [p.extraImg] : []);
+        ex.forEach(function (v, i) {
+          if (v && /^images\//.test(v)) {
+            add(v, { product: p.id, name: p.name },
+              p.name + ' — 추가 이미지' + (ex.length > 1 ? ' ' + (i + 1) : ''), 'products', 800);
+          }
+        });
       });
     }
 
