@@ -467,3 +467,25 @@ table.tbl td .input{min-height:34px;padding:6px 9px}
   .menu-toggle{display:inline-flex}
   header.top h2{font-size:15px}
 }
+
+/* ---------- 메인 팝업 ---------- */
+#popList .item.is-pin{border-color:var(--brand-l);box-shadow:0 0 0 2px rgba(16,100,167,.10)}
+.pop-state{flex:none;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:-.01em;white-space:nowrap}
+.pop-state.live{background:#e7f5ec;color:#1b7f44}
+.pop-state.off{background:#f0f2f5;color:#75808f}
+.pop-state.wait{background:#fff5e5;color:#9a6708}
+.pop-state.done{background:#f6ecec;color:#9a3b3b}
+.pop-noimg{width:96px;flex:none;min-height:128px;display:flex;align-items:center;justify-content:center;
+ text-align:center;padding:0 10px;border:1px dashed var(--line);border-radius:var(--r);
+ color:#8b96a5;font-size:12px;line-height:1.5;background:#fafbfd}
+.empty-note{border:1px dashed var(--line);border-radius:var(--r);padding:26px 18px;text-align:center;
+ color:#75808f;font-size:13.5px;background:#fafbfd}
+
+/* ---------- 주요실적: 분류 · 부제 ---------- */
+.perf-fields{display:grid;grid-template-columns:200px 1fr;gap:10px 14px;margin:0 0 12px}
+.perf-fields .field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.perf-fields .field>span{font-size:12px;color:#75808f;font-weight:600}
+.perf-fields .field .input{width:100%;min-width:0}
+.perf-noimg{margin:8px 0 0;font-size:12.5px;color:#9a6708;background:#fff8ec;
+ border:1px solid #f3e2c4;border-radius:8px;padding:8px 11px}
+@media(max-width:760px){.perf-fields{grid-template-columns:1fr}}

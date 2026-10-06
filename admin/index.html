@@ -75,6 +75,7 @@
       <a data-nav="perf"><span class="ic">★</span> 주요실적 관리 <em class="n" id="nPerf" hidden></em></a>
       <a data-nav="detail"><span class="ic">▤</span> 제품상세 <em class="n" id="nDetail" hidden></em></a>
       <a data-nav="board"><span class="ic">☰</span> 공지사항 · 자료실 <em class="n" id="nBoard" hidden></em></a>
+      <a data-nav="popup"><span class="ic">◧</span> 메인 팝업 <em class="n" id="nPopup" hidden></em></a>
       <div class="grp">문의</div>
       <a data-nav="inq"><span class="ic">✉</span> 문의함 <em class="n red" id="nInq" hidden></em></a>
       <div class="grp">사이트 설정</div>
@@ -380,6 +381,28 @@
         <div id="archList"></div>
         <div class="row" style="margin-top:14px">
           <button class="btn primary" id="archAdd">+ 자료 추가</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- 메인 팝업 ---------- -->
+    <section class="panel" data-panel="popup">
+      <div class="card">
+        <h3>메인 팝업</h3>
+        <p class="desc">
+          방문자가 <b>홈페이지 첫 화면</b>에 들어올 때 뜨는 알림창입니다.
+          휴무 안내, 전시회 소식, 신제품 알림 등에 쓰입니다.
+          <br><small>
+            <b>노출</b>을 꺼두면 자료는 남기고 화면에만 안 보이게 할 수 있습니다.
+            <b>노출 기간</b>을 정해두면 그 기간에만 저절로 떴다가 사라집니다. 비워두면 계속 보입니다.
+            방문자가 <b>오늘 하루 보지 않기</b>에 체크하면 그날은 다시 뜨지 않습니다.
+            여러 개를 켜두면 나란히 함께 뜹니다.
+          </small>
+        </p>
+        <div id="popList"></div>
+        <div class="row" style="margin-top:14px">
+          <button class="btn primary" id="popAdd">+ 팝업 추가</button>
+          <button class="btn" id="popPreview">첫 화면에서 미리보기</button>
         </div>
       </div>
     </section>

@@ -87,7 +87,10 @@
       var host = $('#modalHost');
       host.innerHTML = '';
       host.appendChild(box);
-      box.addEventListener('click', function (e) { if (e.target === box) { host.innerHTML = ''; resolve(false); } });
+      /* 바깥(어두운 배경)을 눌러도 닫지 않는다.
+         글을 쓰다가 실수로 눌러 입력한 내용이 사라지는 일을 막기 위해서다.
+         닫으려면 아래쪽 '취소' 나 '닫기' 를 눌러야 한다. */
+      box.addEventListener('mousedown', function (e) { if (e.target === box) e.preventDefault(); });
     });
   }
 
@@ -114,6 +117,8 @@
       logout: function () { return Promise.resolve(); }
     };
     window.__admin = S;   // 로컬 점검용
+    // 로컬에서 화면을 다시 그려 볼 수 있게 열어 둔다 (?preview 일 때만 만들어진다)
+    window.__render = { popup: renderPopup, archive: renderArchive, notice: renderNotice };
     busy(true, '미리보기 불러오는 중…');
     loadSite().then(function () {
       $('#login').hidden = true;
@@ -458,7 +463,7 @@
       S.blockCache = {};
       S.imgChanges = {};
       prodSel = {};              // 제품 선택 상태도 함께 초기화
-      S.changed = { images: 0, text: 0, perf: 0, detail: 0, board: 0, info: 0, seo: 0 };
+      S.changed = { images: 0, text: 0, perf: 0, detail: 0, board: 0, popup: 0, info: 0, seo: 0 };
       buildAll();
       updateChangeUI();
     });
@@ -481,6 +486,7 @@
     buildPerf();
     buildDetail();
     buildBoard();
+    buildPopup();
     buildInfo();
     buildSeo();
   }
@@ -1596,11 +1602,61 @@
     host.innerHTML = '';
     if (!list.length) { host.innerHTML = '<div class="empty">등록된 실적이 없습니다. 위의 “실적 추가”를 눌러 등록하세요.</div>'; return; }
 
+    /* 부제에 이미 쓰인 표현을 모아 추천 목록으로 준다.
+       같은 뜻인데 띄어쓰기만 다른 글이 섞이는 것을 줄이기 위해서다. */
+    var subSeen = {};
+    Object.keys(perf).forEach(function (k) {
+      (perf[k] || []).forEach(function (it) {
+        var v = (it.s || '').trim();
+        if (v) subSeen[v] = 1;
+      });
+    });
+    var subList = el('datalist', { id: 'perfSubList' });
+    Object.keys(subSeen).sort().forEach(function (v) { subList.appendChild(el('option', { value: v })); });
+    host.appendChild(subList);
+
+    function field(label, control) {
+      var tag = /^(INPUT|SELECT|TEXTAREA)$/.test(control.tagName) ? 'label' : 'div';
+      return el(tag, { class: 'field' }, [el('span', { text: label }), control]);
+    }
+
     list.forEach(function (item, idx) {
       var nameIn = el('input', { class: 'input', value: item.n || '', placeholder: '실적(현장) 이름' });
       nameIn.addEventListener('change', function () {
-        perfMutate(function (p) { p[cat][idx].n = nameIn.value; });
+        perfMutate(function (p) { p[cat][idx].n = nameIn.value.trim(); });
         toast('저장 대기 중 — 발행하면 반영됩니다.');
+      });
+
+      /* 부제 — 홈페이지에서 이름 아래 작은 글씨로 나온다 */
+      var subIn = el('input', {
+        class: 'input', value: item.s || '',
+        placeholder: '예: LPR + 무인정산 시스템'
+      });
+      subIn.setAttribute('list', 'perfSubList');
+      subIn.title = item.s || '';
+      subIn.addEventListener('change', function () {
+        var v = subIn.value.trim();
+        perfMutate(function (p) { p[cat][idx].s = v; });
+        subIn.title = v;
+        toast('저장 대기 중 — 발행하면 반영됩니다.');
+      });
+
+      /* 분류 옮기기 */
+      var catSel = el('select', { class: 'input' });
+      PERF_CATS.forEach(function (c) {
+        var o = el('option', { value: c, text: c });
+        o.selected = c === cat;
+        catSel.appendChild(o);
+      });
+      catSel.addEventListener('change', function () {
+        var to = catSel.value;
+        if (to === cat) return;
+        perfMutate(function (p) {
+          var moved = p[cat].splice(idx, 1)[0];
+          p[to].push(moved);
+        });
+        buildPerf();
+        toast('“' + (item.n || '이 실적') + '” 을 “' + to + '” 분류로 옮겼습니다.', 'ok', 4000);
       });
 
       var thumbs = el('div', { class: 'thumbs' });
@@ -1636,7 +1692,14 @@
             buildPerf();
           } })
         ]),
-        thumbs
+        el('div', { class: 'perf-fields' }, [
+          field('분류', catSel),
+          field('이름 아래 설명 (부제)', subIn)
+        ]),
+        thumbs,
+        (item.imgs || []).length ? null
+          : el('p', { class: 'perf-noimg',
+              text: '사진이 없습니다. 홈페이지 목록에 빈 칸으로 보이니 한 장 이상 넣어 주세요.' })
       ]));
     });
   }
@@ -2881,6 +2944,255 @@
     });
   }
 
+  /* ===================== 메인 팝업 =====================
+     홈페이지 첫 화면에 뜨는 알림창.
+     자료는 index.html 의 window.POPUPS 에 담긴다. */
+
+  var POP_TYPES = [
+    { v: 'image', t: '이미지만' },
+    { v: 'both', t: '이미지 + 글' },
+    { v: 'text', t: '글만' }
+  ];
+
+  /* 팝업에서 연결할 수 있는 홈페이지 화면 */
+  var POP_LINKS = [
+    { v: '', t: '연결 안 함' },
+    { v: '#company', t: '회사소개' },
+    { v: '#history', t: '연혁' },
+    { v: '#organization', t: '조직도' },
+    { v: '#cert', t: '인증현황' },
+    { v: '#location', t: '찾아오시는 길' },
+    { v: '#control', t: '솔루션 · 스마트 통합 주차관제' },
+    { v: '#guidance', t: '솔루션 · 지능형 주차관리' },
+    { v: '#payment', t: '솔루션 · 무인정산' },
+    { v: '#ai', t: '솔루션 · AI 영상인식' },
+    { v: '#etc', t: '솔루션 · 그 외' },
+    { v: '#products', t: '제품소개' },
+    { v: '#result', t: '주요실적' },
+    { v: '#notice', t: '공지사항' },
+    { v: '#archive', t: '자료실' },
+    { v: '#contact', t: '온라인 문의' },
+    { v: '__url__', t: '다른 사이트 주소 직접 입력' }
+  ];
+
+  function popModel() { return (S.doc.popupsData() || []).map(function (p) { return p; }); }
+
+  function popWrite(list) {
+    S.doc.setPopupsData(list);
+    S.changed.popup = (S.changed.popup || 0) + 1;
+    updateChangeUI();
+  }
+
+  function popNewId() {
+    var used = {};
+    popModel().forEach(function (p) { used[p.id] = 1; });
+    var n = 1;
+    while (used['pop' + n]) n++;
+    return 'pop' + n;
+  }
+
+  /** 팝업이 지금 화면에 보이는 상태인지 한 줄로 알려 준다 */
+  function popState(p) {
+    if (p.on === false) return { cls: 'off', text: '꺼둠' };
+    var t = new Date();
+    var today = t.getFullYear() + '-' + ('0' + (t.getMonth() + 1)).slice(-2) + '-' + ('0' + t.getDate()).slice(-2);
+    if (p.from && today < p.from) return { cls: 'wait', text: p.from + ' 부터' };
+    if (p.to && today > p.to) return { cls: 'done', text: '기간 끝남' };
+    return { cls: 'live', text: '지금 보임' };
+  }
+
+  function renderPopup() {
+    var host = $('#popList');
+    if (!host) return;
+    host.innerHTML = '';
+
+    if (!S.doc.hasPopups()) {
+      host.appendChild(el('p', { class: 'desc',
+        text: '이 홈페이지에는 아직 팝업 기능이 들어가 있지 않습니다. 제작사에 문의해 주세요.' }));
+      return;
+    }
+
+    var list = popModel();
+    if (!list.length) {
+      host.appendChild(el('div', { class: 'empty-note',
+        text: '등록된 팝업이 없습니다. 아래 “+ 팝업 추가” 를 눌러 만들어 주세요.' }));
+      return;
+    }
+
+    function save(i, patch, redraw) {
+      var l = popModel();
+      Object.keys(patch).forEach(function (k) { l[i][k] = patch[k]; });
+      popWrite(l);
+      if (redraw) renderPopup();
+    }
+    function field(label, control, cls) {
+      var tag = /^(INPUT|SELECT|TEXTAREA)$/.test(control.tagName) ? 'label' : 'div';
+      return el(tag, { class: 'field' + (cls ? ' ' + cls : '') }, [el('span', { text: label }), control]);
+    }
+
+    list.forEach(function (p, i) {
+      /* 상태 알림표. 날짜를 고치면 화면을 다시 그리지 않고 이것만 바꿔 준다.
+         (다시 그리면 입력하던 칸에서 손이 떠나 버린다) */
+      var st0 = popState(p);
+      var stateEl = el('span', { class: 'pop-state ' + st0.cls, text: st0.text });
+      function syncState() {
+        var cur = popModel()[i];
+        if (!cur) return;
+        var s = popState(cur);
+        stateEl.className = 'pop-state ' + s.cls;
+        stateEl.textContent = s.text;
+      }
+
+      function inp(key, ph, type) {
+        var e = el('input', { class: 'input', type: type || 'text', value: p[key] || '', placeholder: ph });
+        e.addEventListener('change', function () {
+          var patch = {};
+          patch[key] = e.value.trim();
+          save(i, patch, key === 'link');
+          if (key === 'from' || key === 'to') syncState();
+        });
+        return e;
+      }
+
+      /* 노출 켜기/끄기 */
+      var onBox = el('label', { class: 'pin-box' + (p.on !== false ? ' on' : '') });
+      var onChk = el('input', { type: 'checkbox' });
+      onChk.checked = p.on !== false;
+      onChk.addEventListener('change', function () {
+        save(i, { on: onChk.checked }, true);
+        toast(onChk.checked ? '이 팝업을 켰습니다.' : '이 팝업을 껐습니다. (자료는 남아 있습니다)', 'ok');
+      });
+      onBox.appendChild(onChk);
+      onBox.appendChild(el('span', { text: '노출' }));
+
+      /* 유형 */
+      var typeSel = el('select', { class: 'input' });
+      POP_TYPES.forEach(function (t) {
+        var o = el('option', { value: t.v, text: t.t });
+        o.selected = t.v === (p.type || 'both');
+        typeSel.appendChild(o);
+      });
+      typeSel.addEventListener('change', function () { save(i, { type: typeSel.value }, true); });
+
+      var needImg = (p.type || 'both') !== 'text';
+      var needTxt = (p.type || 'both') !== 'image';
+
+      /* 이미지 */
+      var ch = S.imgChanges[p.img] || S.imgChanges['__new__' + p.img];
+      var cover = el('div', { class: 'thumbs arch-cover' }, [
+        p.img ? el('div', { class: 't' }, [
+          el('img', { src: ch ? ch.previewUrl : assetUrl(p.img), alt: '' }),
+          el('button', { text: '×', title: '이미지 빼기', onclick: function () { save(i, { img: '' }, true); } })
+        ]) : null,
+        el('div', {
+          class: 'add' + (p.img ? ' sm' : ''),
+          text: p.img ? '이미지 변경' : '+ 팝업 이미지',
+          onclick: function () { addPopupImage(i); }
+        })
+      ]);
+
+      /* 글 */
+      var title = el('input', { class: 'input', value: p.title || '', placeholder: '예: 추석 연휴 휴무 안내' });
+      title.addEventListener('change', function () { save(i, { title: title.value.trim() }, true); });
+
+      var body = el('textarea', { class: 'input', rows: '3',
+        placeholder: '팝업에 들어갈 안내 글입니다. 줄을 바꾸면 홈페이지에서도 그대로 줄이 바뀝니다.' });
+      body.value = p.text || '';
+      body.addEventListener('change', function () { save(i, { text: body.value.replace(/[ \t]+$/gm, '') }); });
+
+      /* 연결 링크 — 목록에서 고르거나 주소를 직접 적는다 */
+      var isUrl = !!p.link && /^https?:\/\//i.test(p.link);
+      var linkSel = el('select', { class: 'input' });
+      POP_LINKS.forEach(function (o) {
+        var opt = el('option', { value: o.v, text: o.t });
+        opt.selected = isUrl ? (o.v === '__url__') : (o.v === (p.link || ''));
+        linkSel.appendChild(opt);
+      });
+      linkSel.addEventListener('change', function () {
+        if (linkSel.value === '__url__') save(i, { link: 'https://' }, true);
+        else save(i, { link: linkSel.value }, true);
+      });
+
+      var urlBox = isUrl ? inp('link', 'https://…') : null;
+
+      var goLabel = el('input', { class: 'input', value: p.linkLabel || '',
+        placeholder: '예: 자세히 보기 (비우면 버튼이 안 나옵니다)' });
+      goLabel.addEventListener('change', function () { save(i, { linkLabel: goLabel.value.trim() }); });
+
+      var fields = [field('팝업 유형', typeSel)];
+      if (needTxt) {
+        fields.push(field('제목', title, 'wide'));
+        fields.push(field('내용', body, 'wide'));
+      }
+      fields.push(field('누르면 이동할 곳', linkSel, 'wide'));
+      if (urlBox) fields.push(field('주소', urlBox, 'wide'));
+      if (p.link) fields.push(field('버튼에 쓸 글자 (선택)', goLabel, 'wide'));
+      fields.push(field('노출 시작일 (비우면 제한 없음)', inp('from', '', 'date')));
+      fields.push(field('노출 종료일 (비우면 제한 없음)', inp('to', '', 'date')));
+
+      host.appendChild(el('div', { class: 'item' + (p.on !== false ? ' is-pin' : '') }, [
+        el('div', { class: 'ih' }, [
+          el('span', { class: 'idx', text: String(i + 1) }),
+          el('div', { style: 'flex:1;display:flex;align-items:center;gap:9px' }, [
+            el('b', { text: p.title || (needImg && p.img ? '(이미지 팝업)' : '(제목 없음)'),
+                      style: 'font-size:14.5px' }),
+            stateEl
+          ]),
+          onBox,
+          el('button', { class: 'btn sm', text: '▲', title: '앞으로', onclick: function () {
+            if (i === 0) return;
+            var l = popModel();
+            var t = l[i]; l[i] = l[i - 1]; l[i - 1] = t;
+            popWrite(l); renderPopup();
+          } }),
+          el('button', { class: 'btn sm', text: '▼', title: '뒤로', onclick: function () {
+            var l = popModel();
+            if (i >= l.length - 1) return;
+            var t = l[i]; l[i] = l[i + 1]; l[i + 1] = t;
+            popWrite(l); renderPopup();
+          } }),
+          el('button', { class: 'btn sm danger', text: '삭제', onclick: function () {
+            if (!window.confirm('이 팝업을 삭제할까요?\n\n' + (p.title || '(제목 없음)'))) return;
+            var l = popModel();
+            l.splice(i, 1);
+            popWrite(l); renderPopup();
+            toast('팝업을 삭제했습니다.');
+          } })
+        ]),
+        el('div', { class: 'arch-edit' }, [
+          needImg ? cover : el('div', { class: 'pop-noimg', text: '글만 쓰는 팝업입니다' }),
+          el('div', { class: 'arch-fields' }, fields)
+        ])
+      ]));
+    });
+  }
+
+  function addPopupImage(i) {
+    var input = $('#filePicker');
+    input.value = '';
+    input.onchange = function () {
+      var f = input.files[0];
+      if (!f) return;
+      busy(true, '이미지 준비 중…');
+      processImage(f).then(function (r) {
+        busy(false);
+        var newPath = CONFIG.uploadDir + 'popup-' + stampNow() + '.' + r.ext;
+        S.imgChanges['__new__' + newPath] = {
+          newPath: newPath, base64: r.base64, previewUrl: r.dataUrl, fileName: r.name, isNew: true
+        };
+        S.changed.images++;
+        var l = popModel();
+        l[i].img = newPath;
+        popWrite(l);
+        renderPopup();
+        toast('이미지를 넣었습니다. 발행하면 홈페이지에 반영됩니다.', 'ok');
+      }).catch(function (e) { busy(false); toast(e.message, 'err'); });
+    };
+    input.click();
+  }
+
+  function buildPopup() { renderPopup(); }
+
   function addArchiveImage(i) {
     var input = $('#filePicker');
     input.value = '';
@@ -2913,6 +3225,56 @@
     });
     archiveWrite(m.cards);
     renderArchive();
+  });
+
+  $('#popAdd') && $('#popAdd').addEventListener('click', function () {
+    if (!S.doc.hasPopups()) return toast('이 홈페이지에는 아직 팝업 기능이 없습니다.', 'err');
+    var l = popModel();
+    l.push({
+      id: popNewId(), on: true, type: 'both',
+      title: '새 팝업', text: '', img: '',
+      link: '', linkLabel: '', from: '', to: ''
+    });
+    popWrite(l);
+    renderPopup();
+    toast('팝업을 하나 추가했습니다. 내용을 채운 뒤 발행해 주세요.', 'ok');
+  });
+
+  /* 지금 설정한 팝업이 홈페이지에서 어떻게 보이는지 새 창으로 확인한다.
+     아직 발행하지 않은 내용도 그대로 넣어서 보여 준다. */
+  $('#popPreview') && $('#popPreview').addEventListener('click', function () {
+    var list = popModel().filter(function (p) { return p.on !== false; });
+    if (!list.length) return toast('켜 둔 팝업이 없습니다.', 'err');
+
+    // 아직 올리지 않은 이미지는 미리보기용 주소로 바꿔서 보여 준다
+    var shown = list.map(function (p) {
+      var c = JSON.parse(JSON.stringify(p));
+      var ch = S.imgChanges['__new__' + c.img] || S.imgChanges[c.img];
+      if (c.img) c.img = ch ? ch.previewUrl : assetUrl(c.img);
+      c.from = ''; c.to = '';          // 미리보기에서는 기간을 따지지 않는다
+      return c;
+    });
+
+    var w = window.open(CONFIG.site, '_blank');
+    if (!w) return toast('새 창이 막혀 있습니다. 브라우저에서 팝업 차단을 풀어 주세요.', 'err', 6000);
+
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries++;
+      try {
+        if (w.showPopups) {
+          clearInterval(timer);
+          try { w.localStorage.clear(); } catch (e) {}
+          w.POPUPS = shown;
+          w.popShown = false;
+          var old = w.document.querySelector('.pop-dim');
+          if (old) old.parentNode.removeChild(old);
+          w.showPopups();
+        }
+      } catch (e) { /* 아직 안 열림 */ }
+      if (tries > 60) clearInterval(timer);
+    }, 250);
+    toast('새 창에서 팝업 미리보기를 띄웁니다.', 'ok');
   });
 
   /* ===================== 회사정보 ===================== */
@@ -3089,6 +3451,7 @@
     if (S.changed.perf) parts.push('주요실적 ' + S.changed.perf + '건');
     if (S.changed.detail) parts.push('제품상세 ' + S.changed.detail + '건');
     if (S.changed.board) parts.push('게시물 ' + S.changed.board + '건');
+    if (S.changed.popup) parts.push('메인 팝업 ' + S.changed.popup + '건');
     if (S.changed.info) parts.push('회사정보 ' + S.changed.info + '건');
     if (S.changed.seo) parts.push('SEO 설정');
     return parts;
@@ -3398,7 +3761,7 @@
 
   var TITLES = {
     dash: '대시보드', images: '이미지 관리', text: '텍스트 관리', perf: '주요실적 관리',
-    detail: '제품상세', board: '공지사항 · 자료실', inq: '문의함',
+    detail: '제품상세', board: '공지사항 · 자료실', popup: '메인 팝업', inq: '문의함',
     info: '회사정보 · 푸터', seo: 'SEO 설정', history: '발행 이력',
     account: '비밀번호 변경'
   };

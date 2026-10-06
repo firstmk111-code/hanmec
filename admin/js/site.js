@@ -215,6 +215,7 @@
     this.pageEdits = {};      // key → 새 HTML
     this.perfEdit = null;     // 새 PERF 객체
     this.productsEdit = null; // 새 PRODUCTS 배열
+    this.popupsEdit = null;   // 새 POPUPS 배열 (메인 팝업)
     this.shellEdit = null;    // 새 셸 HTML
     this.headEdits = [];      // {start,end,text}
     this.imageRenames = [];   // {from,to}
@@ -289,6 +290,17 @@
       this.products = null;   // 아직 데이터 방식으로 전환되지 않은 사이트
     }
 
+    // ---- window.POPUPS=[...]  (메인페이지 팝업)
+    var pi = html.indexOf('window.POPUPS=');
+    if (pi >= 0) {
+      var pOpen = html.indexOf('[', pi);
+      var pClose = findBalanced(html, pOpen, '[', ']');
+      this.regions.popups = { start: pOpen, end: pClose + 1 };
+      this.popups = JSON.parse(html.slice(pOpen, pClose + 1));
+    } else {
+      this.popups = null;   // 팝업 기능이 아직 들어가지 않은 사이트
+    }
+
     // 순서 정렬 (그룹 순서대로 보기 좋게)
     var self = this;
     var rank = {};
@@ -321,6 +333,11 @@
   SiteDoc.prototype.hasProducts = function () { return Array.isArray(this.products); };
   SiteDoc.prototype.productsData = function () { return this.productsEdit || this.products || []; };
   SiteDoc.prototype.setProductsData = function (arr) { this.productsEdit = arr; };
+
+  /* ---------- 메인페이지 팝업 ---------- */
+  SiteDoc.prototype.hasPopups = function () { return Array.isArray(this.popups); };
+  SiteDoc.prototype.popupsData = function () { return this.popupsEdit || this.popups || []; };
+  SiteDoc.prototype.setPopupsData = function (arr) { this.popupsEdit = arr; };
 
   /* ---------- 이미지 경로 교체 (전체 문서 전역) ---------- */
   SiteDoc.prototype.renameImage = function (from, to) {
@@ -371,7 +388,8 @@
 
   SiteDoc.prototype.hasChanges = function () {
     return Object.keys(this.pageEdits).length > 0 || this.perfEdit !== null ||
-      this.productsEdit != null || this.shellEdit !== null || this.headEdit !== undefined ||
+      this.productsEdit != null || this.popupsEdit != null ||
+      this.shellEdit !== null || this.headEdit !== undefined ||
       this.imageRenames.length > 0 || !!this.baseForceDirty;
   };
 
@@ -409,6 +427,11 @@
     // 제품
     if (this.productsEdit && this.regions.products) {
       sp.replace(this.regions.products.start, this.regions.products.end, jsObject(this.productsEdit));
+    }
+
+    // 메인 팝업
+    if (this.popupsEdit && this.regions.popups) {
+      sp.replace(this.regions.popups.start, this.regions.popups.end, jsObject(this.popupsEdit));
     }
 
     var out = sp.result();
