@@ -421,6 +421,14 @@
       fresh.setPerfData(dd.perfData());
       changed = true;
     }
+    if (dd.hasPopups() && fresh.hasPopups() && !same(dd.popupsData(), fresh.popupsData())) {
+      fresh.setPopupsData(dd.popupsData());
+      changed = true;
+    }
+    if (dd.hasEn() && fresh.hasEn() && !same(dd.enData(), fresh.enData())) {
+      fresh.setEnData(dd.enData());
+      changed = true;
+    }
     dd.order.forEach(function (k) {
       if (fresh.pages[k] && dd.pageHtml(k) !== fresh.pageHtml(k)) {
         fresh.setPageHtml(k, dd.pageHtml(k));
@@ -463,7 +471,7 @@
       S.blockCache = {};
       S.imgChanges = {};
       prodSel = {};              // 제품 선택 상태도 함께 초기화
-      S.changed = { images: 0, text: 0, perf: 0, detail: 0, board: 0, popup: 0, info: 0, seo: 0 };
+      S.changed = { images: 0, text: 0, perf: 0, detail: 0, board: 0, popup: 0, en: 0, info: 0, seo: 0 };
       buildAll();
       updateChangeUI();
     });
@@ -487,6 +495,7 @@
     buildDetail();
     buildBoard();
     buildPopup();
+    buildEn();
     buildInfo();
     buildSeo();
   }
@@ -2944,6 +2953,485 @@
     });
   }
 
+  /* ===================== 영문 관리 =====================
+     홈페이지는 "한글 → 영문" 사전을 보고 글자를 바꿔 보여 준다.
+     사전에 없으면 한글 그대로 나오므로, 비어 있어도 화면은 깨지지 않는다.
+     여기서는 지금 홈페이지에 실제로 쓰이는 한글을 모아 보여 주고 영문을 받는다. */
+
+  var KO_RE = /[가-힣]/;
+  var EN_PAGE = 40;            // 묶음 하나에서 한 번에 보여 줄 줄 수
+
+  function enNorm(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
+
+  /** 글자 조각을 바구니에 담는다. 같은 글은 한 줄로 합치고 위치만 더한다.
+      ctx 는 그 조각이 원래 들어 있던 문장. 토막 난 글을 알아보게 하려고 같이 둔다. */
+  function enPut(bag, raw, where, ctx) {
+    var t = enNorm(raw);
+    if (!t || !KO_RE.test(t)) return;
+    if (t.length > 300) return;
+    if (!bag[t]) bag[t] = { ko: t, where: [], ctx: '' };
+    if (bag[t].where.indexOf(where) < 0) bag[t].where.push(where);
+    var c = enNorm(ctx);
+    if (c && c !== t && !bag[t].ctx) bag[t].ctx = c;
+  }
+
+  /** HTML 조각에서 사람이 읽는 글자만 뽑는다.
+      홈페이지 영문 처리기도 태그 사이의 글자 단위로 바꾸므로 같은 기준으로 자른다. */
+  function enPutHtml(bag, html, where) {
+    var s = String(html == null ? '' : html);
+    var dec = SiteDoc.decodeEntities || function (x) { return x; };
+    var whole = enNorm(dec(s.replace(/<[^>]+>/g, ' ')));
+    s.split(/<[^>]+>/).forEach(function (seg) { enPut(bag, dec(seg), where, whole); });
+  }
+
+  /** 지금 홈페이지에 쓰이는 한글을 모두 모은다. */
+  function enCollect() {
+    var bag = {};
+    var d = S.doc;
+
+    (d.productsData() || []).forEach(function (p) {
+      enPut(bag, p.name, '제품 이름');
+      enPut(bag, p.tagline, '제품 한 줄 소개');
+      enPut(bag, p.cat, '제품 분류');
+      enPut(bag, p.badge, '제품 뱃지');
+      enPutHtml(bag, p.title, '제품상세 제목');
+      enPutHtml(bag, p.subtitle, '제품상세 부제');
+      enPutHtml(bag, p.desc, '제품상세 설명');
+      enPutHtml(bag, p.colorTitle, '제품상세 색상');
+      enPutHtml(bag, p.colorDesc, '제품상세 색상');
+      (p.specs || []).forEach(function (row) {
+        (row || []).forEach(function (c) { enPutHtml(bag, c, '제품 사양표'); });
+      });
+      (p.feats || []).forEach(function (row) {
+        (row || []).forEach(function (c) { enPutHtml(bag, c, '제품 특징표'); });
+      });
+    });
+
+    var perf = d.perfData() || {};
+    Object.keys(perf).forEach(function (k) {
+      enPut(bag, k, '주요실적 분류');
+      (perf[k] || []).forEach(function (it) {
+        enPut(bag, it.n, '주요실적 이름');
+        enPut(bag, it.s, '주요실적 부제');
+      });
+    });
+
+    if (d.hasPopups()) {
+      (d.popupsData() || []).forEach(function (p) {
+        enPut(bag, p.title, '메인 팝업');
+        String(p.text || '').split('\n').forEach(function (line) { enPut(bag, line, '메인 팝업'); });
+        enPut(bag, p.linkLabel, '메인 팝업');
+      });
+    }
+
+    d.order.forEach(function (key) {
+      var name = d.pageName(key) || key;
+      blocks(key).forEach(function (b) { enPutHtml(bag, b.raw, name); });
+    });
+    blocks('__shell__').forEach(function (b) { enPutHtml(bag, b.raw, '헤더·푸터'); });
+
+    return bag;
+  }
+
+  function enRows() {
+    var bag = enCollect();
+    var dict = S.doc.enData() || {};
+    var rows = Object.keys(bag).map(function (k) {
+      return { ko: k, where: bag[k].where, ctx: bag[k].ctx,
+               en: dict[k] === undefined ? '' : dict[k], live: true };
+    });
+    Object.keys(dict).forEach(function (k) {
+      if (!bag[k]) rows.push({ ko: k, where: ['지금 화면에 없음'], ctx: '', en: dict[k], live: false });
+    });
+    return rows;
+  }
+
+  function buildEn() {
+    if (!S.doc || !S.doc.hasEn()) return;
+    S.enOpen = S.enOpen || {};
+    S.enShown = S.enShown || {};
+
+    var rows = enRows();
+    var wheres = {};
+    rows.forEach(function (r) { r.where.forEach(function (w) { wheres[w] = 1; }); });
+
+    var sel = $('#enWhere');
+    var keep = sel.value;
+    sel.innerHTML = '';
+    sel.appendChild(el('option', { value: '', text: '모든 위치' }));
+    Object.keys(wheres).sort().forEach(function (w) {
+      sel.appendChild(el('option', { value: w, text: w }));
+    });
+    if (keep) sel.value = keep;
+
+    renderEn();
+  }
+
+  function enFiltered() {
+    var mode = $('#enFilter').value;
+    var where = $('#enWhere').value;
+    var q = ($('#enSearch').value || '').trim().toLowerCase();
+    return enRows().filter(function (r) {
+      if (mode === 'todo' && r.en) return false;
+      if (mode === 'done' && !r.en) return false;
+      if (mode !== 'all' && !r.live) return false;
+      if (where && r.where.indexOf(where) < 0) return false;
+      if (q && r.ko.toLowerCase().indexOf(q) < 0 && String(r.en).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+
+  function enSummary() {
+    var all = enRows().filter(function (r) { return r.live; });
+    var todo = all.filter(function (r) { return !r.en; }).length;
+    $('#enCount').innerHTML =
+      '홈페이지에 쓰이는 문구 <b>' + all.length + '개</b> 가운데 ' +
+      (todo ? '아직 영어를 안 쓴 것이 <b style="color:#c0392b">' + todo + '개</b> 있습니다.'
+            : '<b style="color:#1b7f44">모두 영어가 들어가 있습니다.</b>');
+  }
+
+  /** 한 줄 만들기 */
+  function enRowEl(r) {
+    var box = el('input', { class: 'input', type: 'text' });
+    box.value = r.en;
+    box.placeholder = '비워 두면 한글 그대로';
+    box.setAttribute('spellcheck', 'true');
+
+    var mark = el('span', { class: 'en-todo', text: r.en ? '' : '안 씀' });
+    var row = el('div', { class: 'en-row' + (r.en ? '' : ' is-todo') });
+
+    box.addEventListener('change', function () {
+      var v = box.value.trim();
+      if (v === r.en) return;
+      S.doc.setEnOf(r.ko, v);
+      r.en = v;
+      S.changed.en = (S.changed.en || 0) + 1;
+      updateChangeUI();
+      row.classList.toggle('is-todo', !v);
+      mark.textContent = v ? '' : '안 씀';
+      enSummary();
+    });
+
+    var ko = el('div', { class: 'en-ko' }, [
+      el('span', { class: 'en-ko-t', text: r.ko }),
+      mark
+    ]);
+    ko.title = r.ko;
+    if (r.ctx) {
+      ko.appendChild(el('div', { class: 'en-ctx', text: '원래 문장: ' + r.ctx }));
+    }
+    row.appendChild(ko);
+    row.appendChild(el('div', { class: 'en-en' }, [box]));
+    return row;
+  }
+
+  function renderEn() {
+    var host = $('#enList');
+    if (!host) return;
+    host.innerHTML = '';
+
+    if (!S.doc.hasEn()) {
+      host.appendChild(el('p', { class: 'desc',
+        text: '이 홈페이지에는 아직 영문 기능이 들어가 있지 않습니다. 제작사에 문의해 주세요.' }));
+      return;
+    }
+
+    enSummary();
+
+    var list = enFiltered();
+    var mode = $('#enFilter').value;
+    var todoAll = enRows().filter(function (r) { return r.live && !r.en; }).length;
+
+    if (!list.length) {
+      host.appendChild(el('div', { class: 'empty-note',
+        text: (mode === 'todo' && !todoAll)
+          ? '지금은 더 쓰실 것이 없습니다. 새 제품이나 공지를 올리시면 그 글이 여기에 나타납니다.'
+          : '해당하는 문구가 없습니다. 위의 조건을 바꿔 보세요.' }));
+      return;
+    }
+
+    /* 위치별로 묶는다. 한 문구가 여러 곳에 쓰이면 첫 번째 위치에 넣는다. */
+    var groups = {};
+    var order = [];
+    list.forEach(function (r) {
+      var g = r.where[0] || '기타';
+      if (!groups[g]) { groups[g] = []; order.push(g); }
+      groups[g].push(r);
+    });
+    order.sort(function (a, b) {
+      var at = groups[a].filter(function (r) { return !r.en; }).length;
+      var bt = groups[b].filter(function (r) { return !r.en; }).length;
+      if (!!at !== !!bt) return at ? -1 : 1;        // 안 쓴 것이 있는 묶음을 위로
+      return a < b ? -1 : 1;
+    });
+
+    var q = ($('#enSearch').value || '').trim();
+    order.forEach(function (g) {
+      var rows = groups[g];
+      var todo = rows.filter(function (r) { return !r.en; }).length;
+
+      /* 펼칠지 접을지 — 안 쓴 것이 있거나, 검색 중이거나, 묶음이 하나뿐이면 펼친다 */
+      var key = g;
+      if (S.enOpen[key] === undefined) S.enOpen[key] = !!todo || !!q || order.length === 1;
+      if (!S.enShown[key]) S.enShown[key] = EN_PAGE;
+
+      var open = S.enOpen[key];
+      var box = el('div', { class: 'en-grp' + (open ? ' is-open' : '') });
+
+      var head = el('button', { class: 'en-grp-h', type: 'button' }, [
+        el('span', { class: 'en-grp-ar', text: open ? '▾' : '▸' }),
+        el('b', { text: g }),
+        el('span', { class: 'en-grp-n', text: rows.length + '개' }),
+        todo ? el('span', { class: 'en-grp-todo', text: '안 쓴 것 ' + todo }) : null
+      ]);
+      head.addEventListener('click', function () {
+        S.enOpen[key] = !S.enOpen[key];
+        renderEn();
+      });
+      box.appendChild(head);
+
+      if (open) {
+        var body = el('div', { class: 'en-grp-b' });
+        body.appendChild(el('div', { class: 'en-row en-head' }, [
+          el('div', { class: 'en-ko', text: '홈페이지의 한글' }),
+          el('div', { class: 'en-en', text: '영어로 쓰면' })
+        ]));
+        rows.slice(0, S.enShown[key]).forEach(function (r) { body.appendChild(enRowEl(r)); });
+        if (rows.length > S.enShown[key]) {
+          var more = el('button', { class: 'btn sm en-more', type: 'button',
+            text: '이 묶음 더 보기 (' + (rows.length - S.enShown[key]) + '개 남음)' });
+          more.addEventListener('click', function () { S.enShown[key] += EN_PAGE; renderEn(); });
+          body.appendChild(more);
+        }
+        box.appendChild(body);
+      }
+      host.appendChild(box);
+    });
+  }
+
+
+  /* ---------- 영문 관리: 화면에서 고치기 ---------- */
+
+  var EN_HL_CSS =
+    '[data-en-hit]{cursor:pointer}' +
+    '[data-en-hit]:hover{outline:2px solid #1064a7!important;outline-offset:1px}' +
+    'body.en-mark [data-en-todo]{background:rgba(255,214,0,.45)!important;' +
+    'outline:1px dashed #c9960a!important;outline-offset:1px}' +
+    '[data-en-sel]{outline:2px solid #e8590c!important;outline-offset:1px}';
+
+  /** 관리자가 들고 있는 문서를 iframe 에 띄울 수 있는 형태로 바꾼다. */
+  function enStageHtml() {
+    var h = S.doc.serialize();
+    /* 이미지·첨부·영문 처리기를 실제 홈페이지 주소에서 가져오게 한다
+       (관리자는 다른 도메인이라 상대경로가 통하지 않는다) */
+    h = h.replace(/(["'(\\])images\//g, '$1' + CONFIG.site + 'images/');
+    h = h.replace(/(["'(\\])files\//g, '$1' + CONFIG.site + 'files/');
+    h = h.replace(/(["'(\\])videos\//g, '$1' + CONFIG.site + 'videos/');
+    h = h.replace('<script src="en.js"></script>',
+                  '<script src="' + CONFIG.site + 'en.js"></script>');
+    /* 아직 발행하지 않은 사전을 쓰도록, 영어로 열리게 한다 */
+    h = h.replace('</head>', '<script>window.HANMEC_DEFAULT="en";</script></head>');
+    return h;
+  }
+
+  /** iframe 안의 글자에 표시를 단다. */
+  function enStageMark() {
+    var fr = $('#enFrame');
+    var D = fr && fr.contentDocument;
+    if (!D || !D.body) return;
+
+    D.querySelectorAll('[data-en-hit]').forEach(function (el) {
+      el.removeAttribute('data-en-hit');
+      el.removeAttribute('data-en-todo');
+    });
+
+    var walker = D.createTreeWalker(D.body, NodeFilter.SHOW_TEXT, null, false);
+    var n, todo = 0, total = 0;
+    while ((n = walker.nextNode())) {
+      var p = n.parentNode;
+      if (!p || p.nodeType !== 1) continue;
+      var t = p.tagName;
+      if (t === 'SCRIPT' || t === 'STYLE' || t === 'TEXTAREA') continue;
+      if (p.closest && p.closest('.en-skip')) continue;
+
+      var ko = (n.__ko !== undefined) ? n.__ko : n.nodeValue;
+      if (!ko || !/[가-힣]/.test(ko)) continue;
+
+      total++;
+      p.setAttribute('data-en-hit', '1');
+      /* 지금 화면에 한글이 그대로 보이면 아직 안 쓴 것 */
+      if (/[가-힣]/.test(n.nodeValue)) { p.setAttribute('data-en-todo', '1'); todo++; }
+    }
+
+    D.body.classList.toggle('en-mark', $('#enHl').checked);
+    $('#enLiveCount').innerHTML = '이 화면의 문구 <b>' + total + '개</b>' +
+      (todo ? ' 가운데 <b style="color:#c0392b">' + todo + '개</b> 가 아직 한글입니다.'
+            : ' 모두 영어로 되어 있습니다.');
+  }
+
+  /** 누른 자리의 글자 마디를 찾는다. */
+  function enNodeAt(D, x, y, el) {
+    /* 좌표로 글자 마디를 찾되, 누른 칸 안에 있는 것만 인정한다.
+       칸의 빈 곳을 눌렀을 때 옆 칸의 글자가 잡히는 것을 막기 위해서다. */
+    if (D.caretRangeFromPoint) {
+      var r = D.caretRangeFromPoint(x, y);
+      var c = r && r.startContainer;
+      if (c && c.nodeType === 3 && el.contains(c)) {
+        var k = (c.__ko !== undefined) ? c.__ko : c.nodeValue;
+        if (k && /[가-힣]/.test(k)) return c;
+      }
+    }
+    /* 못 찾으면 그 칸의 첫 한글 마디를 쓴다 */
+    var w = D.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+    var n;
+    while ((n = w.nextNode())) {
+      var ko = (n.__ko !== undefined) ? n.__ko : n.nodeValue;
+      if (ko && /[가-힣]/.test(ko)) return n;
+    }
+    return null;
+  }
+
+  function enPopClose() {
+    var fr = $('#enFrame');
+    var D = fr && fr.contentDocument;
+    if (D) D.querySelectorAll('[data-en-sel]').forEach(function (e) { e.removeAttribute('data-en-sel'); });
+    $('#enPop').hidden = true;
+    S.enPopKo = null;
+  }
+
+  function enPopOpen(ko, rect) {
+    S.enPopKo = ko;
+    $('#enPopKo').textContent = ko;
+    $('#enPopIn').value = S.doc.enOf(ko);
+
+    var pop = $('#enPop');
+    pop.hidden = false;
+    var stage = pop.parentNode.getBoundingClientRect();
+    var ph = pop.offsetHeight || 150;
+    var pw = pop.offsetWidth || 380;
+    var top = rect.bottom + 8;
+    if (top + ph > stage.height) top = Math.max(8, rect.top - ph - 8);
+    var left = Math.min(Math.max(8, rect.left), Math.max(8, stage.width - pw - 8));
+    pop.style.top = top + 'px';
+    pop.style.left = left + 'px';
+    setTimeout(function () { $('#enPopIn').focus(); $('#enPopIn').select(); }, 10);
+  }
+
+  /** 지금 적은 사전을 iframe 에 밀어 넣고 다시 칠한다. */
+  function enStageRepaint() {
+    var fr = $('#enFrame');
+    var W = fr && fr.contentWindow;
+    if (!W || !W.HANMEC_EN || !W.hanmecI18n) return;
+    var dict = S.doc.enData() || {};
+    Object.keys(W.HANMEC_EN).forEach(function (k) { if (dict[k] === undefined) delete W.HANMEC_EN[k]; });
+    Object.keys(dict).forEach(function (k) { W.HANMEC_EN[k] = dict[k]; });
+    /* 영문 처리기는 '한글인 글자'만 바꾼다. 이미 영어가 된 자리는 건드리지 않으므로
+       한 번 한글로 되돌린 다음 다시 칠해야 고친 영문이 반영된다. */
+    try {
+      W.hanmecI18n.toKo(W.document.body);
+      W.hanmecI18n.toEn(W.document.body);
+    } catch (e) {
+      try { W.hanmecI18n.repaint(); } catch (e2) {}
+    }
+    enStageMark();
+  }
+
+  function enStageBind() {
+    var fr = $('#enFrame');
+    var D = fr.contentDocument, W = fr.contentWindow;
+    if (!D || !W) return;
+
+    /* 표시용 스타일 */
+    var st = D.createElement('style');
+    st.textContent = EN_HL_CSS;
+    D.head.appendChild(st);
+
+    /* 아직 발행하지 않은 사전을 쓰게 한다 */
+    enStageRepaint();
+
+    /* 화면 안의 메뉴·버튼은 눌러도 이동하지 않게 하고, 글자 고치기로만 쓴다 */
+    D.addEventListener('click', function (e) {
+      var el = e.target;
+      if (!el || el.nodeType !== 1) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var hit = el.closest('[data-en-hit]');
+      if (!hit) { enPopClose(); return; }
+
+      var node = enNodeAt(D, e.clientX, e.clientY, hit);
+      if (!node) { enPopClose(); return; }
+      var ko = (node.__ko !== undefined) ? node.__ko : node.nodeValue;
+      ko = String(ko).replace(/\s+/g, ' ').trim();
+      if (!ko) { enPopClose(); return; }
+
+      D.querySelectorAll('[data-en-sel]').forEach(function (x) { x.removeAttribute('data-en-sel'); });
+      hit.setAttribute('data-en-sel', '1');
+
+      var r = hit.getBoundingClientRect();
+      var fo = fr.getBoundingClientRect();
+      var so = $('#enPop').parentNode.getBoundingClientRect();
+      enPopOpen(ko, {
+        top: r.top + (fo.top - so.top),
+        bottom: r.bottom + (fo.top - so.top),
+        left: r.left + (fo.left - so.left)
+      });
+    }, true);
+
+    /* 화면 안에서 글이 다시 그려지면(페이지 이동 등) 표시를 새로 단다 */
+    if (W.MutationObserver) {
+      var tm = null;
+      new W.MutationObserver(function () {
+        if (tm) return;
+        tm = W.setTimeout(function () { tm = null; enStageMark(); }, 250);
+      }).observe(D.body, { childList: true, subtree: true });
+    }
+  }
+
+  /** iframe 을 새로 띄운다. */
+  function enStageLoad() {
+    var fr = $('#enFrame');
+    if (!fr || !S.doc || !S.doc.hasEn()) return;
+    enPopClose();
+
+    if (S.enBlob) { try { URL.revokeObjectURL(S.enBlob); } catch (e) {} }
+    S.enBlob = URL.createObjectURL(new Blob([enStageHtml()], { type: 'text/html' }));
+
+    fr.onload = function () {
+      try { enStageBind(); } catch (e) { toast('미리보기를 준비하지 못했습니다: ' + e.message, 'err', 6000); }
+      var go = S.enGoTo;
+      if (go) {
+        S.enGoTo = null;
+        try { fr.contentWindow.go(go); } catch (e) {}
+        setTimeout(enStageMark, 400);
+      }
+    };
+    fr.src = S.enBlob;
+  }
+
+  function buildEnLive() {
+    var sel = $('#enPage');
+    if (!sel || !S.doc) return;
+    if (sel.options.length) return;                 // 한 번만 채운다
+    SiteDoc.GROUPS.forEach(function (g) {
+      var og = el('optgroup', { label: g.name });
+      g.pages.forEach(function (p) {
+        if (!S.doc.pages[p]) return;
+        og.appendChild(el('option', { value: p, text: S.doc.pageName(p) }));
+      });
+      if (og.children.length) sel.appendChild(og);
+    });
+  }
+
+  function enSetMode(mode) {
+    S.enMode = mode;
+    $$('#enTabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.enmode === mode); });
+    $('#enLive').hidden = mode !== 'live';
+    $('#enListWrap').hidden = mode !== 'list';
+    if (mode === 'live') { buildEnLive(); if (!$('#enFrame').src) enStageLoad(); }
+    else renderEn();
+  }
+
   /* ===================== 메인 팝업 =====================
      홈페이지 첫 화면에 뜨는 알림창.
      자료는 index.html 의 window.POPUPS 에 담긴다. */
@@ -3277,6 +3765,69 @@
     toast('새 창에서 팝업 미리보기를 띄웁니다.', 'ok');
   });
 
+  /* 영문 관리 화면의 버튼·입력칸 */
+  $('#enFilter') && $('#enFilter').addEventListener('change', function () { S.enShown = {}; renderEn(); });
+  $('#enWhere') && $('#enWhere').addEventListener('change', function () { S.enShown = {}; renderEn(); });
+  $('#enSearch') && $('#enSearch').addEventListener('input', function () { S.enShown = {}; S.enOpen = {}; renderEn(); });
+  
+
+  /* 아직 발행하지 않은 영문까지 넣어서 새 창으로 보여 준다 */
+  $('#enPreview') && $('#enPreview').addEventListener('click', function () {
+    var dict = S.doc.enData() || {};
+    var w = window.open(CONFIG.site + '?lang=en', '_blank');
+    if (!w) return toast('새 창이 막혀 있습니다. 브라우저에서 팝업 차단을 풀어 주세요.', 'err', 6000);
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries++;
+      try {
+        if (w.hanmecI18n && w.HANMEC_EN) {
+          clearInterval(timer);
+          Object.keys(dict).forEach(function (k) { w.HANMEC_EN[k] = dict[k]; });
+          Object.keys(w.HANMEC_EN).forEach(function (k) { if (dict[k] === undefined) delete w.HANMEC_EN[k]; });
+          w.hanmecI18n.repaint();
+        }
+      } catch (e) { /* 아직 안 열림 */ }
+      if (tries > 60) clearInterval(timer);
+    }, 250);
+    toast('새 창에서 지금 적은 영문 그대로 보여 드립니다.', 'ok');
+  });
+
+
+  /* 영문 관리 — 화면에서 고치기 */
+  $$('#enTabs button').forEach(function (b) {
+    b.addEventListener('click', function () { enSetMode(b.dataset.enmode); });
+  });
+  $('#enPage') && $('#enPage').addEventListener('change', function () {
+    var fr = $('#enFrame');
+    enPopClose();
+    try { fr.contentWindow.go(this.value); setTimeout(enStageMark, 400); }
+    catch (e) { S.enGoTo = this.value; enStageLoad(); }
+  });
+  $('#enHl') && $('#enHl').addEventListener('change', function () {
+    $('#enHlBox').classList.toggle('on', this.checked);
+    var D = $('#enFrame').contentDocument;
+    if (D && D.body) D.body.classList.toggle('en-mark', this.checked);
+  });
+  $('#enReload') && $('#enReload').addEventListener('click', function () { enStageLoad(); });
+  $('#enPopCancel') && $('#enPopCancel').addEventListener('click', enPopClose);
+  $('#enPopSave') && $('#enPopSave').addEventListener('click', function () {
+    var ko = S.enPopKo;
+    if (!ko) return enPopClose();
+    var v = $('#enPopIn').value.trim();
+    if (v !== S.doc.enOf(ko)) {
+      S.doc.setEnOf(ko, v);
+      S.changed.en = (S.changed.en || 0) + 1;
+      updateChangeUI();
+      toast(v ? '적용했습니다. 발행하면 홈페이지에 반영됩니다.' : '비웠습니다. 한글 그대로 나옵니다.', 'ok', 3000);
+    }
+    enPopClose();
+    enStageRepaint();
+  });
+  $('#enPopIn') && $('#enPopIn').addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { e.preventDefault(); enPopClose(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#enPopSave').click(); }
+  });
+
   /* ===================== 회사정보 ===================== */
 
   function buildInfo() {
@@ -3452,6 +4003,7 @@
     if (S.changed.detail) parts.push('제품상세 ' + S.changed.detail + '건');
     if (S.changed.board) parts.push('게시물 ' + S.changed.board + '건');
     if (S.changed.popup) parts.push('메인 팝업 ' + S.changed.popup + '건');
+    if (S.changed.en) parts.push('영문 ' + S.changed.en + '건');
     if (S.changed.info) parts.push('회사정보 ' + S.changed.info + '건');
     if (S.changed.seo) parts.push('SEO 설정');
     return parts;
@@ -3761,7 +4313,7 @@
 
   var TITLES = {
     dash: '대시보드', images: '이미지 관리', text: '텍스트 관리', perf: '주요실적 관리',
-    detail: '제품상세', board: '공지사항 · 자료실', popup: '메인 팝업', inq: '문의함',
+    detail: '제품상세', board: '공지사항 · 자료실', popup: '메인 팝업', en: '영문 관리', inq: '문의함',
     info: '회사정보 · 푸터', seo: 'SEO 설정', history: '발행 이력',
     account: '비밀번호 변경'
   };
@@ -3774,6 +4326,7 @@
     if (name === 'history') loadCommits($('#histList'), 30);
     if (name === 'dash') loadCommits($('#dashCommits'), 6);
     if (name === 'inq') loadInquiries();
+    if (name === 'en') { buildEn(); enSetMode(S.enMode || 'live'); }
     window.scrollTo(0, 0);
   }
 

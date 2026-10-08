@@ -76,6 +76,7 @@
       <a data-nav="detail"><span class="ic">▤</span> 제품상세 <em class="n" id="nDetail" hidden></em></a>
       <a data-nav="board"><span class="ic">☰</span> 공지사항 · 자료실 <em class="n" id="nBoard" hidden></em></a>
       <a data-nav="popup"><span class="ic">◧</span> 메인 팝업 <em class="n" id="nPopup" hidden></em></a>
+      <a data-nav="en"><span class="ic">A</span> 영문 관리 <em class="n" id="nEn" hidden></em></a>
       <div class="grp">문의</div>
       <a data-nav="inq"><span class="ic">✉</span> 문의함 <em class="n red" id="nInq" hidden></em></a>
       <div class="grp">사이트 설정</div>
@@ -403,6 +404,71 @@
         <div class="row" style="margin-top:14px">
           <button class="btn primary" id="popAdd">+ 팝업 추가</button>
           <button class="btn" id="popPreview">첫 화면에서 미리보기</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- 영문 관리 ---------- -->
+    <section class="panel" data-panel="en">
+      <div class="card">
+        <h3>영문 관리</h3>
+        <p class="desc">
+          홈페이지 오른쪽 위 <b>ENG</b> 를 눌렀을 때 보일 영어 문구를 적는 곳입니다.
+          왼쪽이 지금 홈페이지에 있는 한글, 오른쪽이 그에 해당하는 영어입니다.
+          <br><small>
+            <b>비워 두면 그 문구는 영어 화면에서도 한글 그대로 나옵니다.</b> 화면이 깨지지 않으니 모르는 것은 비워 두셔도 됩니다.
+            새 제품이나 공지를 올리시면 그 글이 여기 <b>“아직 안 쓴 것”</b> 에 저절로 나타납니다.
+            적은 내용은 <b>저장하고 발행</b> 을 눌러야 홈페이지에 반영됩니다.
+          </small>
+        </p>
+
+        <div class="en-tabs" id="enTabs">
+          <button type="button" class="on" data-enmode="live">화면에서 고치기</button>
+          <button type="button" data-enmode="list">목록으로 고치기</button>
+        </div>
+
+        <!-- 화면에서 고치기 -->
+        <div id="enLive">
+          <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0 8px">
+            <select class="input" id="enPage" style="width:auto"></select>
+            <label class="pin-box on" id="enHlBox"><input type="checkbox" id="enHl" checked><span>아직 안 쓴 곳 표시</span></label>
+            <span class="desc" id="enLiveCount" style="margin:0"></span>
+            <button class="btn" id="enReload" style="margin-left:auto">새로 불러오기</button>
+          </div>
+          <p class="desc" style="margin:0 0 10px">
+            아래는 <b>영어로 바꾼 홈페이지 화면</b>입니다. 고치고 싶은 글자를 <b>그냥 누르시면</b> 그 자리에서 바꿀 수 있습니다.
+            <span style="background:#fff3c4;padding:1px 5px;border-radius:4px">노란색</span> 은 아직 영어를 안 써서 한글이 그대로 나오는 곳입니다.
+          </p>
+          <div class="en-stage">
+            <iframe id="enFrame" title="영문 홈페이지 미리보기"></iframe>
+            <div class="en-pop" id="enPop" hidden>
+              <div class="en-pop-ko" id="enPopKo"></div>
+              <textarea class="input" id="enPopIn" rows="2" placeholder="영어로 쓰세요. 비우면 한글 그대로 나옵니다."></textarea>
+              <div class="en-pop-btns">
+                <button class="btn sm" id="enPopCancel">취소</button>
+                <button class="btn sm primary" id="enPopSave">적용</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 목록으로 고치기 -->
+        <div id="enListWrap" hidden>
+        <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0 4px">
+          <select class="input" id="enFilter" style="width:auto">
+            <option value="todo">아직 안 쓴 것만</option>
+            <option value="done">이미 쓴 것만</option>
+            <option value="all">전체</option>
+          </select>
+          <select class="input" id="enWhere" style="width:auto">
+            <option value="">모든 위치</option>
+          </select>
+          <input class="input" id="enSearch" type="text" placeholder="한글 또는 영어로 검색" style="flex:1;min-width:200px">
+          <button class="btn" id="enPreview">영어로 미리보기</button>
+        </div>
+        <p class="desc" id="enCount" style="margin:6px 0 0"></p>
+
+        <div id="enList" style="margin-top:14px"></div>
         </div>
       </div>
     </section>

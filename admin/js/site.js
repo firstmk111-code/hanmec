@@ -216,6 +216,7 @@
     this.perfEdit = null;     // 새 PERF 객체
     this.productsEdit = null; // 새 PRODUCTS 배열
     this.popupsEdit = null;   // 새 POPUPS 배열 (메인 팝업)
+    this.enEdit = null;       // 새 영문 사전
     this.shellEdit = null;    // 새 셸 HTML
     this.headEdits = [];      // {start,end,text}
     this.imageRenames = [];   // {from,to}
@@ -301,6 +302,17 @@
       this.popups = null;   // 팝업 기능이 아직 들어가지 않은 사이트
     }
 
+    // ---- window.HANMEC_EN={...}  (영문 사전: 한글 → 영문)
+    var ei = html.indexOf('window.HANMEC_EN=');
+    if (ei >= 0) {
+      var eOpen = html.indexOf('{', ei);
+      var eClose = findBalanced(html, eOpen);
+      this.regions.en = { start: eOpen, end: eClose + 1 };
+      this.en = JSON.parse(html.slice(eOpen, eClose + 1));
+    } else {
+      this.en = null;   // 영문 기능이 아직 들어가지 않은 사이트
+    }
+
     // 순서 정렬 (그룹 순서대로 보기 좋게)
     var self = this;
     var rank = {};
@@ -338,6 +350,27 @@
   SiteDoc.prototype.hasPopups = function () { return Array.isArray(this.popups); };
   SiteDoc.prototype.popupsData = function () { return this.popupsEdit || this.popups || []; };
   SiteDoc.prototype.setPopupsData = function (arr) { this.popupsEdit = arr; };
+
+  /* ---------- 영문 사전 ----------
+     한글을 열쇠로 영문을 찾는다. 사전에 없으면 홈페이지에 한글 그대로 나온다.
+     값이 비어 있으면(''), 아직 번역하지 않은 것으로 본다. */
+  SiteDoc.prototype.hasEn = function () { return !!this.en && typeof this.en === 'object'; };
+  SiteDoc.prototype.enData = function () { return this.enEdit || this.en || {}; };
+  SiteDoc.prototype.setEnData = function (obj) { this.enEdit = obj; };
+  SiteDoc.prototype.enOf = function (ko) {
+    var d = this.enData();
+    var v = d[ko];
+    return v === undefined ? '' : v;
+  };
+  /** 한 개만 고친다. 빈 값을 주면 사전에서 뺀다(= 한글로 보이게). */
+  SiteDoc.prototype.setEnOf = function (ko, en) {
+    var d = {};
+    var cur = this.enData();
+    Object.keys(cur).forEach(function (k) { d[k] = cur[k]; });
+    en = String(en == null ? '' : en).trim();
+    if (en) d[ko] = en; else delete d[ko];
+    this.enEdit = d;
+  };
 
   /* ---------- 이미지 경로 교체 (전체 문서 전역) ---------- */
   SiteDoc.prototype.renameImage = function (from, to) {
@@ -388,7 +421,7 @@
 
   SiteDoc.prototype.hasChanges = function () {
     return Object.keys(this.pageEdits).length > 0 || this.perfEdit !== null ||
-      this.productsEdit != null || this.popupsEdit != null ||
+      this.productsEdit != null || this.popupsEdit != null || this.enEdit != null ||
       this.shellEdit !== null || this.headEdit !== undefined ||
       this.imageRenames.length > 0 || !!this.baseForceDirty;
   };
@@ -432,6 +465,11 @@
     // 메인 팝업
     if (this.popupsEdit && this.regions.popups) {
       sp.replace(this.regions.popups.start, this.regions.popups.end, jsObject(this.popupsEdit));
+    }
+
+    // 영문 사전
+    if (this.enEdit && this.regions.en) {
+      sp.replace(this.regions.en.start, this.regions.en.end, jsObject(this.enEdit));
     }
 
     var out = sp.result();
@@ -1270,6 +1308,7 @@
   SiteDoc.PAGE_NAMES = PAGE_NAMES;
   SiteDoc.groupOfPage = groupOfPage;
   SiteDoc.escapeHtml = esc;
+  SiteDoc.decodeEntities = decodeEntities;
 
   global.SiteDoc = SiteDoc;
   if (typeof module !== 'undefined' && module.exports) module.exports = SiteDoc;
