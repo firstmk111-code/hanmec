@@ -17,7 +17,7 @@
 
   var DICT = w.HANMEC_EN || {};
   var KEY = 'hanmec-lang';
-  var KO = /[가-힣]/;
+  var KO = /[가-힣ㄱ-ㅎㅏ-ㅣ]/;
 
   /* 번역할 속성 — 화면에 글자로 보이거나 읽히는 것만 */
   var ATTRS = ['placeholder', 'title', 'aria-label', 'alt'];

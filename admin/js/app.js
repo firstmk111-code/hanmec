@@ -2958,7 +2958,7 @@
      사전에 없으면 한글 그대로 나오므로, 비어 있어도 화면은 깨지지 않는다.
      여기서는 지금 홈페이지에 실제로 쓰이는 한글을 모아 보여 주고 영문을 받는다. */
 
-  var KO_RE = /[가-힣]/;
+  var KO_RE = /[가-힣ㄱ-ㅎㅏ-ㅣ]/;
   var EN_PAGE = 40;            // 묶음 하나에서 한 번에 보여 줄 줄 수
 
   function enNorm(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
@@ -3219,8 +3219,9 @@
     'outline:1px dashed #c9960a!important;outline-offset:1px}' +
     '[data-en-sel]{outline:2px solid #e8590c!important;outline-offset:1px}';
 
-  /** 관리자가 들고 있는 문서를 iframe 에 띄울 수 있는 형태로 바꾼다. */
-  function enStageHtml() {
+  /** 관리자가 들고 있는 문서를 iframe 에 띄울 수 있는 형태로 바꾼다.
+      lang 을 'ko' 로 주면 국문으로 연다 (팝업 미리보기용). */
+  function enStageHtml(lang) {
     var h = S.doc.serialize();
     /* 이미지·첨부·영문 처리기를 실제 홈페이지 주소에서 가져오게 한다
        (관리자는 다른 도메인이라 상대경로가 통하지 않는다) */
@@ -3229,8 +3230,10 @@
     h = h.replace(/(["'(\\])videos\//g, '$1' + CONFIG.site + 'videos/');
     h = h.replace('<script src="en.js"></script>',
                   '<script src="' + CONFIG.site + 'en.js"></script>');
-    /* 아직 발행하지 않은 사전을 쓰도록, 영어로 열리게 한다 */
-    h = h.replace('</head>', '<script>window.HANMEC_DEFAULT="en";</script></head>');
+    /* 아직 발행하지 않은 사전을 쓰도록, 정해진 언어로 열리게 한다 */
+    h = h.replace('</head>',
+      '<script>window.HANMEC_DEFAULT="' + (lang === 'ko' ? 'ko' : 'en') + '";' +
+      'try{localStorage.removeItem("hanmec-lang");}catch(e){}</script></head>');
     return h;
   }
 
@@ -3255,12 +3258,12 @@
       if (p.closest && p.closest('.en-skip')) continue;
 
       var ko = (n.__ko !== undefined) ? n.__ko : n.nodeValue;
-      if (!ko || !/[가-힣]/.test(ko)) continue;
+      if (!ko || !/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ko)) continue;
 
       total++;
       p.setAttribute('data-en-hit', '1');
       /* 지금 화면에 한글이 그대로 보이면 아직 안 쓴 것 */
-      if (/[가-힣]/.test(n.nodeValue)) { p.setAttribute('data-en-todo', '1'); todo++; }
+      if (/[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(n.nodeValue)) { p.setAttribute('data-en-todo', '1'); todo++; }
     }
 
     D.body.classList.toggle('en-mark', $('#enHl').checked);
@@ -3278,7 +3281,7 @@
       var c = r && r.startContainer;
       if (c && c.nodeType === 3 && el.contains(c)) {
         var k = (c.__ko !== undefined) ? c.__ko : c.nodeValue;
-        if (k && /[가-힣]/.test(k)) return c;
+        if (k && /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(k)) return c;
       }
     }
     /* 못 찾으면 그 칸의 첫 한글 마디를 쓴다 */
@@ -3286,7 +3289,7 @@
     var n;
     while ((n = w.nextNode())) {
       var ko = (n.__ko !== undefined) ? n.__ko : n.nodeValue;
-      if (ko && /[가-힣]/.test(ko)) return n;
+      if (ko && /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ko)) return n;
     }
     return null;
   }
@@ -3349,10 +3352,17 @@
     /* 아직 발행하지 않은 사전을 쓰게 한다 */
     enStageRepaint();
 
-    /* 화면 안의 메뉴·버튼은 눌러도 이동하지 않게 하고, 글자 고치기로만 쓴다 */
+    /* 화면 안의 메뉴·버튼은 눌러도 이동하지 않게 하고, 글자 고치기로만 쓴다.
+       다만 팝업의 닫기·체크는 그대로 눌리게 둔다 —
+       팝업이 떠 있으면 그 아래 글을 고칠 수 없기 때문이다. */
     D.addEventListener('click', function (e) {
       var el = e.target;
       if (!el || el.nodeType !== 1) return;
+      if (el.closest('.pop-x, .pop-foot label, .pop-foot input')) {
+        enPopClose();
+        setTimeout(enStageMark, 300);
+        return;                       // 막지 않는다 → 팝업이 닫힌다
+      }
       e.preventDefault();
       e.stopPropagation();
 
@@ -3743,14 +3753,20 @@
       return c;
     });
 
-    var w = window.open(CONFIG.site, '_blank');
+    /* 라이브 주소를 그냥 열면 관리자와 도메인이 달라 안쪽을 건드릴 수 없다.
+       (그래서 지금까지 미리보기가 동작하지 않았다)
+       관리자가 들고 있는 문서를 그대로 띄워야 아직 발행 전 내용까지 보여줄 수 있다. */
+    if (S.popBlob) { try { URL.revokeObjectURL(S.popBlob); } catch (e) {} }
+    S.popBlob = URL.createObjectURL(new Blob([enStageHtml('ko')], { type: 'text/html' }));
+
+    var w = window.open(S.popBlob, '_blank');
     if (!w) return toast('새 창이 막혀 있습니다. 브라우저에서 팝업 차단을 풀어 주세요.', 'err', 6000);
 
     var tries = 0;
     var timer = setInterval(function () {
       tries++;
       try {
-        if (w.showPopups) {
+        if (w.showPopups && w.document && w.document.body) {
           clearInterval(timer);
           try { w.localStorage.clear(); } catch (e) {}
           w.POPUPS = shown;

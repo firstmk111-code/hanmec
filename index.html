@@ -1018,6 +1018,38 @@ a.pop-in{cursor:pointer}
  body.en header .gnb{gap:8px}
  body.en header .gnb>li>a{padding:15px 10px;font-size:17px}
 }
+
+/* 261012 수정 */
+/* ③ 팝업을 화면 한가운데가 아니라 헤더 로고 아래에 띄운다 */
+.pop-dim{align-items:flex-start;justify-content:flex-start;padding:0}
+/* 왼쪽 88px = .wrap 여백 48 + .logo 여백 40 → 로고 이미지 왼쪽과 정확히 맞는다 */
+.pop-wrap{margin:0;padding:104px 0 32px 88px}
+@media(max-width:1100px){.pop-wrap{padding-left:56px}}
+@media(max-width:760px){
+ .pop-dim{align-items:center;justify-content:center;padding:14px}
+ .pop-wrap{padding:0}
+}
+/* ④ 로고를 더 오른쪽으로 */
+header .logo{padding-left:40px}
+@media(max-width:1100px){header .logo{padding-left:8px}}
+/* ⑤ 회사명을 로고의 H 높이에 맞춰 키운다 (17px → 23px)
+   ⑥ 로고 속 글자가 이미지 한가운데보다 아래에 있어 한글을 4px 내려 맞춘다
+      (자리를 밀지 않도록 relative 로 옮긴다) */
+.logo .lgname{font-size:23px;position:relative;top:4px}
+/* 글자를 키웠으므로 좁은 화면에서 더 일찍 감춰야 메뉴가 한 줄을 지킨다.
+   영문 메뉴가 한글보다 길어 영문을 먼저 감춘다. */
+@media(max-width:1400px){body.en header .logo .lgname{display:none}}
+@media(max-width:1260px){header .logo .lgname{display:none}}
+/* 모바일 메뉴(980px) 직전 좁은 구간에서 영문 메뉴가 한 줄을 지키도록 더 줄인다 */
+@media(max-width:1050px){
+ body.en header .gnb{gap:4px}
+ body.en header .gnb>li>a{padding:15px 7px;font-size:16px}
+}
+@media(max-width:1030px){
+ body.en header .gnb{gap:0}
+ body.en header .gnb>li>a{padding:15px 5px;font-size:15px}
+ body.en header .wrap{padding:0 24px}
+}
 </style></head>
 <body><header id="hdr"><div class="wrap"><a class="logo" data-go="home" href="javascript:void(0)"><img class="lgimg" src="images/img002.png" alt="HanMec 한맥아이피에스"><span class="lgname">(주)한맥아이피에스</span></a><ul class="gnb" id="gnb"><li class="has-sub" data-group="about"><a data-go="company" href="javascript:void(0)"><span data-en="Company">회사소개</span><span class="caret">▾</span></a><ul class="sub"><li><a data-go="company" href="javascript:void(0)">대표자 인사말</a></li><li><a data-go="history" href="javascript:void(0)">연혁</a></li><li><a data-go="organization" href="javascript:void(0)">조직구조</a></li><li><a data-go="cert" href="javascript:void(0)">인증현황</a></li><li><a data-go="location" href="javascript:void(0)">오시는 길</a></li></ul></li><li class="has-sub" data-group="solution"><a data-go="ai" href="javascript:void(0)"><span data-en="Solutions">솔루션</span><span class="caret">▾</span></a><ul class="sub"><li><a data-go="ai" href="javascript:void(0)">AI영상인식</a></li><li><a data-go="control" href="javascript:void(0)">스마트 통합 주차관제</a></li><li><a data-go="etc" href="javascript:void(0)">대시민 주차포털</a></li><li><a data-go="guidance" href="javascript:void(0)">지능형 주차관리</a></li><li><a data-go="payment" href="javascript:void(0)">노상스마트주차관리</a></li></ul></li><li class="has-sub" data-group="products"><a data-go="products" href="javascript:void(0)"><span data-en="Products">제품소개</span><span class="caret">▾</span></a><ul class="sub"><li><a data-go="products" data-cat="전체" href="javascript:void(0)">전체</a></li><li><a data-go="products" data-cat="주차관제" href="javascript:void(0)">주차관제</a></li><li><a data-go="products" data-cat="주차유도" href="javascript:void(0)">주차유도</a></li><li><a data-go="products" data-cat="노상주차" href="javascript:void(0)">노상무인</a></li><li><a data-go="products" data-cat="배리어프리 키오스크" href="javascript:void(0)">배리어프리 키오스크</a></li></ul></li><li class="has-sub" data-group="result"><a data-go="result" href="javascript:void(0)"><span data-en="Performance">주요실적</span><span class="caret">▾</span></a><ul class="sub"><li><a data-go="result" data-cat="공영주차장" href="javascript:void(0)">공영주차장</a></li><li><a data-go="result" data-cat="교육기관" href="javascript:void(0)">교육기관</a></li><li><a data-go="result" data-cat="상업시설" href="javascript:void(0)">상업시설</a></li><li><a data-go="result" data-cat="문화시설" href="javascript:void(0)">문화시설</a></li><li><a data-go="result" data-cat="주차타워" href="javascript:void(0)">주차타워</a></li></ul></li><li class="has-sub" data-group="support"><a data-go="contact" href="javascript:void(0)"><span data-en="Support">고객지원</span><span class="caret">▾</span></a><ul class="sub"><li><a data-go="notice" href="javascript:void(0)">공지사항</a></li><li><a data-go="contact" href="javascript:void(0)">온라인 문의</a></li><li><a data-go="archive" href="javascript:void(0)">자료실</a></li></ul></li></ul><div class="hbtns"><div class="lang"><span class="on" data-lang="ko">KOR</span><span class="sep">|</span><span data-lang="en">ENG</span></div><button class="menu-btn" id="menuBtn" aria-label="메뉴">☰</button></div></div></header><main id="app"></main><footer><div class="wrap"><div class="foot-grid">
   <div><a class="logo" data-go="home" href="javascript:void(0)"><img class="lgimg" src="images/img002.png" alt="HanMec 한맥아이피에스"></a>
@@ -1149,15 +1181,9 @@ function showPopups(){
   wrap.appendChild(box);
  });
 
- /* 어두운 바깥을 누르면 모두 닫는다 (체크한 것은 기억한다) */
- dim.addEventListener('click',function(e){
-  if(e.target!==dim)return;
-  [].slice.call(wrap.querySelectorAll('.pop')).forEach(function(b){
-   var c=b.querySelector('.pop-foot input');
-   if(c&&c.checked){var i=[].indexOf.call(wrap.children,b);if(list[i])popHide(list[i].id);}
-  });
-  popClose(dim);
- });
+ /* 바깥(어두운 배경)을 눌러도 닫지 않는다.
+    보다가 실수로 눌러 닫히는 일을 막기 위해서다. 닫으려면 '닫기' 를 누른다. */
+ dim.addEventListener('mousedown',function(e){ if(e.target===dim) e.preventDefault(); });
 
  document.body.appendChild(dim);
  requestAnimationFrame(function(){dim.classList.add('on');});
