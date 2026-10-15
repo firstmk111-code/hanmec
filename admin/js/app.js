@@ -3575,13 +3575,28 @@
       var needImg = (p.type || 'both') !== 'text';
       var needTxt = (p.type || 'both') !== 'image';
 
-      /* 이미지 */
+      /* 이미지 — 팝업 폭은 이 이미지의 원래 가로 크기를 그대로 따른다.
+         그래서 몇 px 짜리인지 보여 준다. */
       var ch = S.imgChanges[p.img] || S.imgChanges['__new__' + p.img];
+      var sizeNote = el('div', { class: 'pop-size', text: '크기 확인 중…' });
+      var sizeImg = el('img', { src: ch ? ch.previewUrl : assetUrl(p.img), alt: '' });
+      sizeImg.addEventListener('load', function () {
+        var nw = sizeImg.naturalWidth, nh = sizeImg.naturalHeight;
+        if (!nw) { sizeNote.textContent = ''; return; }
+        sizeNote.textContent = '원본 ' + nw + ' × ' + nh;
+        sizeNote.title = '팝업 가로 폭은 이 이미지의 가로 크기(' + nw + 'px)가 됩니다.';
+        if (nw > 1300) {
+          sizeNote.textContent += ' · 화면에 맞게 줄어듭니다';
+          sizeNote.classList.add('warn');
+        }
+      });
+      sizeImg.addEventListener('error', function () { sizeNote.textContent = ''; });
       var cover = el('div', { class: 'thumbs arch-cover' }, [
         p.img ? el('div', { class: 't' }, [
-          el('img', { src: ch ? ch.previewUrl : assetUrl(p.img), alt: '' }),
+          sizeImg,
           el('button', { text: '×', title: '이미지 빼기', onclick: function () { save(i, { img: '' }, true); } })
         ]) : null,
+        p.img ? sizeNote : null,
         el('div', {
           class: 'add' + (p.img ? ' sm' : ''),
           text: p.img ? '이미지 변경' : '+ 팝업 이미지',

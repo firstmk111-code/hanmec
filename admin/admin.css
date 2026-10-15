@@ -544,3 +544,7 @@ table.tbl td .input{min-height:34px;padding:6px 9px}
  margin-bottom:8px;max-height:84px;overflow:auto;line-height:1.5;word-break:break-word}
 .en-pop .input{width:100%;font-size:13.5px}
 .en-pop-btns{display:flex;justify-content:flex-end;gap:7px;margin-top:9px}
+
+/* 팝업 이미지 원본 크기 안내 */
+.pop-size{width:96px;margin-top:5px;font-size:11px;line-height:1.35;color:#75808f;text-align:center;word-break:keep-all}
+.pop-size.warn{color:#9a6708}
