@@ -1051,14 +1051,22 @@ header .logo{padding-left:40px}
  body.en header .wrap{padding:0 24px}
 }
 
+
+
 /* 261015 팝업 폭 */
 /* 글만 있는 팝업은 지금처럼 400px, 이미지가 있으면 이미지 원래 크기대로.
    어느 쪽이든 화면을 넘지 않는다. */
 /* 넓은 팝업이 가운데로 밀리지 않고 로고 아래에 맞도록 왼쪽 정렬 */
 .pop-wrap{justify-content:flex-start}
 .pop{max-width:calc(100vw - 120px)}
-.pop.has-img{width:auto;min-width:300px}
+/* 최소 폭을 두지 않는다 — 작은 이미지는 작은 그대로 나와야 한다 */
+.pop.has-img{width:auto;min-width:0}
 .pop.has-img .pop-img{width:auto;max-width:100%;height:auto}
+/* 아주 좁은 이미지에서도 상자가 이미지보다 넓어지지 않도록,
+   아래 줄(오늘 하루 보지 않기 · 닫기)이 알아서 접히게 한다 */
+.pop-foot{flex-wrap:wrap;row-gap:4px;padding:11px 12px}
+.pop-foot label{font-size:12.5px;white-space:normal;word-break:keep-all}
+.pop-foot .pop-x{padding:5px 6px}
 /* 이미지가 아주 넓어도 글줄이 지나치게 길어지지 않게 묶는다 */
 .pop-txt{max-width:640px}
 .pop-go{max-width:calc(100% - 48px)}
