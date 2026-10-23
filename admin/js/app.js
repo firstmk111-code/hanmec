@@ -3492,7 +3492,8 @@
   /** 팝업이 지금 화면에 보이는 상태인지 한 줄로 알려 준다 */
   function popState(p) {
     if (p.on === false) return { cls: 'off', text: '꺼둠' };
-    var t = new Date();
+    /* 홈페이지와 똑같이 한국시간 기준으로 따진다 */
+    var t = new Date(Date.now() + new Date().getTimezoneOffset() * 60000 + 32400000);
     var today = t.getFullYear() + '-' + ('0' + (t.getMonth() + 1)).slice(-2) + '-' + ('0' + t.getDate()).slice(-2);
     if (p.from && today < p.from) return { cls: 'wait', text: p.from + ' 부터' };
     if (p.to && today > p.to) return { cls: 'done', text: '기간 끝남' };
@@ -3633,8 +3634,10 @@
       goLabel.addEventListener('change', function () { save(i, { linkLabel: goLabel.value.trim() }); });
 
       var fields = [field('팝업 유형', typeSel)];
+      /* 제목은 유형과 상관없이 늘 받는다.
+         홈페이지 팝업 맨 윗줄(짙은 남색 띠)에 그대로 나오기 때문이다. */
+      fields.push(field('제목 (팝업 윗줄에 표시)', title, 'wide'));
       if (needTxt) {
-        fields.push(field('제목', title, 'wide'));
         fields.push(field('내용', body, 'wide'));
       }
       fields.push(field('누르면 이동할 곳', linkSel, 'wide'));
@@ -3689,7 +3692,10 @@
       busy(true, '이미지 준비 중…');
       processImage(f).then(function (r) {
         busy(false);
-        var newPath = CONFIG.uploadDir + 'popup-' + stampNow() + '.' + r.ext;
+        /* 같은 1초 안에 두 번 바꾸면 이름이 같아져, 올린 뒤에도 브라우저가
+           예전 그림을 그대로 보여 줄 수 있다. 뒤에 짧은 표식을 붙여 막는다. */
+        var popUniqName = 'popup-' + stampNow() + '-' + Math.random().toString(36).slice(2, 6);
+        var newPath = CONFIG.uploadDir + popUniqName + '.' + r.ext;
         S.imgChanges['__new__' + newPath] = {
           newPath: newPath, base64: r.base64, previewUrl: r.dataUrl, fileName: r.name, isNew: true
         };
