@@ -1137,6 +1137,34 @@ header .logo{padding-left:40px}
 @media(max-width:359px){.sol-wrap .sol-stage{transform:scale(.56);margin:6px auto 12px}}
 @media(max-width:329px){.sol-wrap .sol-stage{transform:scale(.52);margin:-2px auto 4px}}
 @media(max-width:309px){.sol-wrap .sol-stage{transform:scale(.48);margin:-12px auto -4px}}
+
+/* 261027 수정 */
+/* ① 팝업 제목과 글을 가운데로.
+   윗줄은 오른쪽에 닫기(X)가 있어 그대로 두면 제목이 왼쪽으로 치우친다.
+   오른쪽이 차지하는 만큼(오른여백 10 + X 32 + 사이 8 = 50) 왼쪽에도 자리를 줘야
+   제목이 상자의 진짜 한가운데에 온다. */
+.pop-head{padding-left:50px}
+.pop-title{text-align:center}
+.pop-txt{text-align:center}
+/* 글이 가운데로 왔으니 아래 버튼도 가운데에 둔다 */
+.pop-go{margin-left:auto;margin-right:auto}
+/* 좁은 화면은 오른여백 8 + X 32 + 사이 8 = 48 */
+@media(max-width:760px){.pop-head{padding-left:48px}}
+
+/* ③ 공지 글 내용 — 제목을 누르면 펼쳐진다 */
+.nt-tt{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.nt-tt:hover{color:#1064a7}
+.nt-more{display:inline-flex;align-items:center;justify-content:center;
+ width:19px;height:19px;flex:0 0 auto;border-radius:50%;
+ background:#eef3f9;color:#5a6b85;font-size:11px;line-height:1;font-weight:700}
+.nt-tt:hover .nt-more{background:#1064a7;color:#fff}
+.nt-body{display:none;margin:12px 0 2px;padding:15px 17px;border-radius:9px;
+ background:#f7f9fc;border:1px solid #e9eef5;
+ font-size:15px;line-height:1.75;color:#44536c;white-space:pre-line;word-break:keep-all}
+tr.nt-open .nt-body{display:block}
+/* ④ 검색에 걸리지 않은 줄은 감춘다 */
+.nthide{display:none!important}
+.nt-none{padding:46px 10px;text-align:center;color:#8794a8;font-size:16px}
 </style></head>
 <body><header id="hdr"><div class="wrap"><a class="logo" data-go="home" href="javascript:void(0)"><img class="lgimg" src="images/img002.png" alt="HanMec 한맥아이피에스"><span class="lgname">(주)한맥아이피에스</span></a><ul class="gnb" id="gnb"><li class="has-sub" data-group="about"><a data-go="company" href="javascript:void(0)"><span data-en="Company">회사소개</span><span class="caret">▾</span></a><ul class="sub"><li><a data-go="company" href="javascript:void(0)">대표자 인사말</a></li><li><a data-go="history" href="javascript:void(0)">연혁</a></li><li><a data-go="organization" href="javascript:void(0)">조직구조</a></li><li><a data-go="cert" href="javascript:void(0)">인증현황</a></li><li><a data-go="location" href="javascript:void(0)">오시는 길</a></li></ul></li><li class="has-sub" data-group="solution"><a data-go="ai" href="javascript:void(0)"><span data-en="Solutions">솔루션</span><span class="caret">▾</span></a><ul class="sub"><li><a data-go="ai" href="javascript:void(0)">AI영상인식</a></li><li><a data-go="control" href="javascript:void(0)">스마트 통합 주차관제</a></li><li><a data-go="etc" href="javascript:void(0)">대시민 주차포털</a></li><li><a data-go="guidance" href="javascript:void(0)">지능형 주차관리</a></li><li><a data-go="payment" href="javascript:void(0)">노상스마트주차관리</a></li></ul></li><li class="has-sub" data-group="products"><a data-go="products" href="javascript:void(0)"><span data-en="Products">제품소개</span><span class="caret">▾</span></a><ul class="sub"><li><a data-go="products" data-cat="전체" href="javascript:void(0)">전체</a></li><li><a data-go="products" data-cat="주차관제" href="javascript:void(0)">주차관제</a></li><li><a data-go="products" data-cat="주차유도" href="javascript:void(0)">주차유도</a></li><li><a data-go="products" data-cat="노상주차" href="javascript:void(0)">노상무인</a></li><li><a data-go="products" data-cat="배리어프리 키오스크" href="javascript:void(0)">배리어프리 키오스크</a></li></ul></li><li class="has-sub" data-group="result"><a data-go="result" href="javascript:void(0)"><span data-en="Performance">주요실적</span><span class="caret">▾</span></a><ul class="sub"><li><a data-go="result" data-cat="공영주차장" href="javascript:void(0)">공영주차장</a></li><li><a data-go="result" data-cat="교육기관" href="javascript:void(0)">교육기관</a></li><li><a data-go="result" data-cat="상업시설" href="javascript:void(0)">상업시설</a></li><li><a data-go="result" data-cat="문화시설" href="javascript:void(0)">문화시설</a></li><li><a data-go="result" data-cat="주차타워" href="javascript:void(0)">주차타워</a></li></ul></li><li class="has-sub" data-group="support"><a data-go="contact" href="javascript:void(0)"><span data-en="Support">고객지원</span><span class="caret">▾</span></a><ul class="sub"><li><a data-go="notice" href="javascript:void(0)">공지사항</a></li><li><a data-go="contact" href="javascript:void(0)">온라인 문의</a></li><li><a data-go="archive" href="javascript:void(0)">자료실</a></li></ul></li></ul><div class="hbtns"><div class="lang"><span class="on" data-lang="ko">KOR</span><span class="sep">|</span><span data-lang="en">ENG</span></div><button class="menu-btn" id="menuBtn" aria-label="메뉴">☰</button></div></div></header><main id="app"></main><footer><div class="wrap"><div class="foot-grid">
   <div><a class="logo" data-go="home" href="javascript:void(0)"><img class="lgimg" src="images/img002.png" alt="HanMec 한맥아이피에스"></a>
@@ -1198,6 +1226,15 @@ function popFit(box,im){
   if(now+gap<=cap)box.style.width=(now+gap)+'px';
  });
 }
+/* 홈이 아닌 화면으로 옮길 때 쓴다.
+   떠 있던 팝업을 모두 걷고, '이미 띄웠음' 표시도 지운다.
+   표시를 지워야 홈으로 돌아왔을 때 다시 뜬다.
+   ('오늘 하루 그만보기' 를 고른 팝업은 따로 기록해 두므로 이와 상관없이 계속 안 뜬다) */
+function popDropAll(){
+ var ds=document.querySelectorAll('.pop-dim');
+ for(var i=0;i<ds.length;i++)if(ds[i].parentNode)ds[i].parentNode.removeChild(ds[i]);
+ popShown=false;
+}
 function popClose(dim){
  if(!dim)return;
  dim.classList.remove('on');
@@ -1214,6 +1251,7 @@ function popFollow(link,dim){
 }
 function showPopups(){
  if(popShown)return;
+ if(document.querySelector('.pop-dim'))return;   /* 이미 떠 있으면 또 만들지 않는다 */
  var list=popLive();
  if(!list.length)return;
  popShown=true;
@@ -1358,10 +1396,104 @@ function pageProducts(){
  pagerFor(vis,document.getElementById('prodPager'),12);
 }
 /* 공지사항 */
+/* 공지 한 줄에 담긴 글 내용을 꺼낸다 (관리자가 data-body 에 넣어 둔다) */
+function noticeBodyOf(tr){ return (tr.getAttribute('data-body')||'').trim(); }
+
+/* 제목을 누르면 글 내용이 펼쳐지도록 한다.
+   따로 줄을 만들지 않고 제목 칸 안에 넣는다 — 그래야 쪽 나누기와 엉키지 않는다. */
+function noticeBindBody(tb){
+ tb.querySelectorAll('tr').forEach(function(tr){
+  if(tr.dataset.ntBound)return;
+  var body=noticeBodyOf(tr);
+  var td=tr.children[1];
+  if(!body||!td)return;
+  tr.dataset.ntBound='1';
+  var head=document.createElement('span');
+  head.className='nt-tt';
+  while(td.firstChild)head.appendChild(td.firstChild);
+  td.appendChild(head);
+  var box=document.createElement('div');
+  box.className='nt-body';
+  box.textContent=body;
+  td.appendChild(box);
+  var mark=document.createElement('span');
+  mark.className='nt-more';
+  mark.textContent='＋';
+  head.appendChild(mark);
+  head.addEventListener('click',function(e){
+   if(e.target.closest('a'))return;        /* 첨부파일 링크는 그대로 내려받기 */
+   var on=tr.classList.toggle('nt-open');
+   mark.textContent=on?'－':'＋';
+  });
+ });
+}
+
+/* 검색 — 제목 · 내용 · 작성자 중 고른 곳에서 찾는다 */
+function noticeFilter(tb,pager){
+ var box=app.querySelector('.nt-search');
+ var sel=box?box.querySelector('select'):null;
+ var inp=box?box.querySelector('input'):null;
+ var wordRaw=inp?inp.value.trim():'';
+ var word=wordRaw.toLowerCase();
+ var where=sel?sel.value||sel.options[sel.selectedIndex].text:'제목';
+ var rows=[].slice.call(tb.querySelectorAll('tr'));
+ var hit=[];
+ rows.forEach(function(tr){
+  var tt=(tr.children[1]?tr.children[1].textContent:'');
+  var bd=noticeBodyOf(tr);
+  var wr=(tr.children[2]?tr.children[2].textContent:'');
+  var hay=where==='내용'?bd:where==='작성자'?wr:tt;
+  var ok=!word||hay.toLowerCase().indexOf(word)>=0;
+  tr.classList.toggle('nthide',!ok);
+  if(ok)hit.push(tr);
+ });
+ var none=app.querySelector('.nt-none');
+ if(none)none.style.display=hit.length?'none':'';
+ if(pager)pager.setAttribute('data-page','1');
+ pagerFor(hit,pager,10);
+}
+
+/* 공지 화면이 그려질 때마다 한 번 준비한다 */
+function noticeSetup(){
+ var pager=document.getElementById('noticePager');
+ var tb=app.querySelector('tbody');
+ if(!tb)return;
+ noticeBindBody(tb);
+
+ var box=app.querySelector('.nt-search');
+ if(!box){
+  /* 예전에 만들어 둔 검색칸에 표시만 달아 준다 (모양은 그대로) */
+  var cand=app.querySelector('select');
+  box=cand?cand.parentNode:null;
+  if(box)box.classList.add('nt-search');
+ }
+ if(box&&!box.dataset.ntBound){
+  box.dataset.ntBound='1';
+  var sel=box.querySelector('select'), inp=box.querySelector('input'), btn=box.querySelector('button');
+  var run=function(){noticeFilter(tb,pager);};
+  if(btn)btn.addEventListener('click',run);
+  if(inp){
+   inp.addEventListener('input',run);
+   inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();run();}});
+  }
+  if(sel)sel.addEventListener('change',run);
+ }
+
+ /* 찾는 글이 없을 때 안내할 자리 */
+ if(!app.querySelector('.nt-none')&&tb.parentNode){
+  var n=document.createElement('div');
+  n.className='nt-none';
+  n.textContent='찾으시는 공지가 없습니다.';
+  n.style.display='none';
+  tb.parentNode.parentNode.appendChild(n);
+ }
+ noticeFilter(tb,pager);
+}
+
 function pageNotice(){
  var p=document.getElementById('noticePager');if(!p)return;
  var tb=app.querySelector('tbody');if(!tb)return;
- pagerFor(tb.querySelectorAll('tr'),p,10);
+ noticeSetup();
 }
 function applyFilter(cat){var g=document.getElementById('filter');if(g)g.querySelectorAll('a').forEach(function(b){b.classList.toggle('cur',b.dataset.cat===cat);});app.querySelectorAll('#pgrid .pcard').forEach(function(c){c.classList.toggle('hide',!(cat==='전체'||c.dataset.cat===cat));});var pp=document.getElementById('prodPager');if(pp)pp.setAttribute('data-page','1');pageProducts();}
 window.PERF={"공영주차장":[{"n":"GS칼텍스 군산물류센터","s":"출입통제시스템","imgs":["images/img067.jpg","images/img068.jpg"]},{"n":"GS칼텍스 목포물류센터","s":"출입통제시스템","imgs":["images/img069.jpg","images/img070.jpg"]},{"n":"경북 왜관시장","s":"무인정산시스템","imgs":["images/img071.jpg","images/img072.jpg"]},{"n":"대구 달성토성 공영주차장","s":"유인정산시스템","imgs":["images/img073.jpg"]},{"n":"대구 서부시장","s":"유인정산시스템","imgs":["images/img074.jpg"]},{"n":"마산 어시장","s":"무인정산시스템","imgs":["images/img075.jpg"]},{"n":"목포지방해양수산청 목포항국제여객터미널","s":"공영주차장","imgs":["images/img076.jpg","images/img077.jpg"]},{"n":"아산시 모종동 공영주차장","s":"무인정산시스템","imgs":["images/img078.jpg"]},{"n":"안동 문화의거리","s":"유인정산시스템","imgs":["images/img079.jpg"]},{"n":"영광군영광터미널공영주차장(무인주차시스템)","s":"무인주차시스템","imgs":["images/img080.jpg","images/img081.jpg","images/img082.jpg"]},{"n":"태백 황지자유시장","s":"유인정산시스템","imgs":["images/img083.jpg"]},{"n":"포항 양덕법원 시장","s":"무인정산시스템","imgs":["images/img084.jpg"]},{"n":"대구 교동공영주차장","s":"유/무인 정산시스템","imgs":["images/up/perf-261006141841.jpg","images/up/perf-261006141957.jpg"]}],"교육기관":[{"n":"국립순천대학교","s":"교육기관","imgs":["images/img085.jpg","images/img086.jpg","images/img087.jpg","images/img088.jpg","images/img089.jpg","images/img090.jpg","images/img091.jpg","images/img092.jpg"]},{"n":"국립제주대학교","s":"유무인 정산시스템","imgs":["images/img093.jpg","images/img094.jpg","images/img095.jpg","images/img096.jpg","images/img097.jpg"]},{"n":"동양대학교 동두천 캠퍼스","s":"LPR+출입통제 시스템","imgs":["images/img098.jpg"]},{"n":"한국폴리텍대학교 광주캠퍼스","s":"교육기관","imgs":["images/img099.jpg","images/img100.jpg"]}],"상업시설":[{"n":"강원도 치악산 국립공원","s":"LPR+유무인정산시스템","imgs":["images/img101.jpg"]},{"n":"울산문화예술회관","s":"LPR+출입통제시스템","imgs":["images/img102.jpg"]},{"n":"의정부 종합운동장","s":"LPR+유인정산시스템","imgs":["images/img103.jpg"]},{"n":"창원 성산아트홀","s":"LPR+유인정산시스템","imgs":["images/img104.jpg"]}],"문화시설":[{"n":"광주 일곡이마트에브리데이","s":"LPR+무인 정산시스템","imgs":["images/img105.jpg"]},{"n":"온양 그랜드호텔","s":"LPR+무인 정산시스템+웹할인","imgs":["images/img106.jpg"]},{"n":"익산 웨스턴라이프 호텔","s":"LPR+출입통제시스템","imgs":["images/img107.jpg","images/img108.jpg","images/img109.jpg"]},{"n":"팔공산 가산산성 야영장","s":"LPR+출입통제시스템+자바라연동+대형전광판","imgs":["images/img110.jpg"]}],"주차타워":[{"n":"원주 휴먼주차타워","s":"LPR+무인 정산시스템","imgs":["images/img111.jpg"]},{"n":"천안 SKL 주차타워","s":"LPR+무인 정산시스템","imgs":["images/img112.jpg"]},{"n":"청주 LK트리플렉스","s":"LPR+무인 정산시스템+주차유도시스템","imgs":["images/img113.jpg"]},{"n":"양산 애플타운","s":"LPR+무인정산시스템","imgs":["images/img114.jpg"]},{"n":"코리아비지니스센터","s":"LPR+유인정산시스템","imgs":["images/img115.jpg"]}]};
@@ -1418,7 +1550,7 @@ function initLpr360(){return;initLpr360View({el:'lpr360',img:'lpr360img',hint:'l
 function go(key,cat){if(!PAGES[key])key='home';app.innerHTML='<div class="fadepage">'+PAGES[key]+'</div>';app.dataset.grp=({home:'home',ai:'solution',control:'solution',guidance:'solution',payment:'solution',etc:'solution',products:'products',detail:'products',result:'result',contact:'support',notice:'support',archive:'support'}[key]||'about');window.scrollTo(0,0);
  document.querySelectorAll('.gnb>li').forEach(function(li){li.classList.toggle('cur',li.dataset.group===GROUP[key]);li.classList.remove('open');});
  var g=document.getElementById('gnb');if(g)g.classList.remove('mopen');
- if(key==='products')renderProductGrid();if(key==='detail')renderProductDetail(cat);if(key==='archive')initArchive();if(key==='cert')initCertZoom();initMotions();bindReveal();applyLang();if(key==='products')applyFilter(cat||'전체');if(key==='notice')pageNotice();if(key==='home')showPopups();if(key==='result')initResult(cat);if(key==='detail')initLpr360();location.hash=(key==='detail'&&cat)?(key+'/'+cat):key;onScroll();}
+ if(key==='products')renderProductGrid();if(key==='detail')renderProductDetail(cat);if(key==='archive')initArchive();if(key==='cert')initCertZoom();initMotions();bindReveal();applyLang();if(key==='products')applyFilter(cat||'전체');if(key==='notice')pageNotice();if(key==='home')showPopups();else popDropAll();if(key==='result')initResult(cat);if(key==='detail')initLpr360();location.hash=(key==='detail'&&cat)?(key+'/'+cat):key;onScroll();}
 function onScroll(){var y=window.scrollY;if(totop)totop.classList.toggle('show',y>600);var hd=document.querySelector('header');if(hd)hd.classList.toggle('solid',true);}
 var heroTimer=null;
 function initHeroSlider(){

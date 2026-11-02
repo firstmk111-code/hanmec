@@ -2565,10 +2565,15 @@
       var title = htmlToText(link ? tdFrag.slice(0, link.start) + tdFrag.slice(link.end) : tdFrag);
 
       var v = tds.map(function (td) { return SiteDoc.textOf(td).trim(); });
+      /* 글 내용은 표에 칸을 만들지 않고 줄(tr) 속성에 담아 둔다.
+         그래야 홈페이지 표 모양이 그대로 유지된다. */
+      var body = SiteDoc.decodeEntities(SiteDoc.attrOf(tr, 'data-body') || '');
+
       return {
         pin: pin,
         no: pin ? '' : (v[0] || ''),
         title: title,
+        body: body,
         writer: v[2] || '', date: v[3] || '', hit: v[4] || '',
         file: link ? (SiteDoc.attrOf(link, 'href') || '') : '',
         fileName: link ? (SiteDoc.attrOf(link, 'data-name') || '') : ''
@@ -2588,7 +2593,9 @@
         ? '<span style="' + PIN_BADGE + '">공지</span>'
         : esc(r.no || '—');
       var file = attachLink(r.file, r.fileName, FILE_LINK, '📎 ');
-      return '<tr' + (r.pin ? ' data-pin="1"' : '') + ' style="' + (r.pin ? TR_PIN : TR_S) + '">' +
+      /* 글 내용 — 따옴표까지 안전하게 바꿔서 속성에 담는다 */
+      var bodyAttr = r.body ? ' data-body="' + esc(r.body) + '"' : '';
+      return '<tr' + (r.pin ? ' data-pin="1"' : '') + bodyAttr + ' style="' + (r.pin ? TR_PIN : TR_S) + '">' +
         '<td style="' + TD_C + '">' + no + '</td>' +
         '<td style="' + TD_T + '">' + esc(r.title || '') + file + '</td>' +
         '<td style="' + TD_C + '">' + esc(r.writer || '—') + '</td>' +
@@ -2661,6 +2668,19 @@
         }));
       }
 
+      /* 공지 내용 입력칸 — 표 아래에 한 줄 더 붙인다.
+         여기 적은 글이 홈페이지에서 제목을 눌렀을 때 펼쳐진다. */
+      var bodyBox = el('textarea', {
+        class: 'input nt-body-in', rows: '2',
+        placeholder: '공지 내용을 적어 주세요. 줄을 바꾸면 홈페이지에서도 그대로 줄이 바뀝니다. (비워 두면 제목만 보입니다)'
+      });
+      bodyBox.value = r.body || '';
+      bodyBox.addEventListener('change', function () {
+        var rows = noticeModel().rows;
+        rows[i].body = bodyBox.value.replace(/[ \t]+$/gm, '');
+        noticeWrite(rows);
+      });
+
       host.appendChild(el('tr', { class: r.pin ? 'is-pin' : '' }, [
         el('td', { class: 'c' }, [pin]),
         el('td', {}, [r.pin ? el('span', { class: 'pin-tag', text: '공지' }) : inp('no', '—')]),
@@ -2678,6 +2698,17 @@
           }
         })])
       ]));
+
+      /* 바로 아래에 내용 칸을 한 줄로 펼쳐 둔다 */
+      host.appendChild(el('tr', { class: 'nt-body-row' + (r.pin ? ' is-pin' : '') }, [
+        el('td', { class: 'c' }, []),
+        el('td', { colspan: '6' }, [
+          el('label', { class: 'nt-body-lab' }, [
+            el('span', { text: '내용' }),
+            bodyBox
+          ])
+        ])
+      ]));
     });
   }
 
@@ -2690,7 +2721,7 @@
     m.rows.unshift({
       pin: false, no: String(next), title: '새 공지사항', writer: '관리자',
       date: d.getFullYear() + '.' + pad(d.getMonth() + 1) + '.' + pad(d.getDate()),
-      hit: '0', file: '', fileName: ''
+      hit: '0', file: '', fileName: '', body: ''
     });
     noticeWrite(m.rows);
     renderNotice();

@@ -548,3 +548,11 @@ table.tbl td .input{min-height:34px;padding:6px 9px}
 /* 팝업 이미지 원본 크기 안내 */
 .pop-size{width:96px;margin-top:5px;font-size:11px;line-height:1.35;color:#75808f;text-align:center;word-break:keep-all}
 .pop-size.warn{color:#9a6708}
+
+/* 261027 공지 내용 */
+/* 공지 한 건 아래에 붙는 내용 입력 줄 */
+.nt-body-row > td { padding-top: 0; border-top: 0 }
+.nt-body-row.is-pin > td { background: inherit }
+.nt-body-lab { display: flex; align-items: flex-start; gap: 10px }
+.nt-body-lab > span { flex: 0 0 auto; margin-top: 9px; font-size: 13px; color: #6b7a90; font-weight: 600 }
+.nt-body-in { width: 100%; min-height: 54px; resize: vertical; line-height: 1.6 }
