@@ -704,11 +704,34 @@
   /* ===================== 8. 회사정보(연락처) 찾기 ===================== */
 
   var INFO_FIELDS = [
-    { id: 'tel',   name: '대표 전화',      re: /\b0\d{1,2}-\d{3,4}-\d{4}\b/g },
+    { id: 'tel',   name: '대표 전화',      re: /\b0\d{1,2}-\d{3,4}-\d{4}\b|\b1[568]\d{2}-\d{4}\b/g },
     { id: 'email', name: '이메일',        re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g },
     { id: 'biz',   name: '사업자등록번호', re: /\b\d{3}-\d{2}-\d{5}\b/g },
-    { id: 'addr',  name: '주소',          re: /(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)[가-힣]*\s*[가-힣]+[시군구]\s+[가-힣A-Za-z0-9]+로\s?[0-9]*길?\s*[0-9]+[0-9-]*(?:\s*\([가-힣]+\))?/g }
+    { id: 'addr',  name: '주소',          re: /(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)[가-힣]*\s*[가-힣]+[시군구]\s+[가-힣A-Za-z0-9]+\s?[0-9]*로\s?[0-9]*길?\s*[0-9]+[0-9-]*(?:\s*\([가-힣]+\))?/g }
   ];
+
+  /* 전화번호는 생김새가 모두 같아서 번호만으로는 역할을 알 수 없다.
+     바로 앞에 붙은 이름표(콜센터 / FAX / TEL …)를 보고 가려낸다.
+     이름표가 옆 칸에 따로 들어 있는 경우가 많아, 그 칸 바로 앞의 원문도 함께 본다. */
+  var TEL_ROLES = { main: '대표 전화', call: '콜센터', fax: '팩스' };
+
+  function labelBefore(html, start) {
+    var pre = html.slice(Math.max(0, start - 220), start).replace(/<[^>]*>/g, '|');
+    var parts = pre.split('|');
+    for (var i = parts.length - 1; i >= 0; i--) {
+      var t = parts[i].trim();
+      if (t) return t;
+    }
+    return '';
+  }
+
+  /** before = 같은 칸 안에서 그 번호 바로 앞에 있던 글자 */
+  function telRole(html, block, before) {
+    var s = (labelBefore(html, block.start) + ' ' + (before || '')).toUpperCase();
+    if (/FAX|팩스|F\./.test(s)) return 'fax';
+    if (/콜\s*센터|CALL\s*CENTER/.test(s)) return 'call';
+    return 'main';
+  }
 
   /**
    * 사이트 전체(셸 + 모든 페이지)에서 연락처류 값이 쓰인 곳을 모아 준다.
@@ -718,28 +741,86 @@
     var self = this;
     var buckets = {};   // field.id + '|' + value → 레코드
 
-    function scan(scope, scopeName, blocks) {
+    function scan(scope, scopeName, html, blocks) {
       blocks.forEach(function (b) {
         INFO_FIELDS.forEach(function (f) {
           f.re.lastIndex = 0;
           var m;
           while ((m = f.re.exec(b.text))) {
             var val = m[0].trim().replace(/[,.\s]+$/, '');
-            var k = f.id + '|' + val;
-            if (!buckets[k]) buckets[k] = { field: f.id, fieldName: f.name, value: val, spots: [] };
+            /* 전화는 역할까지 따져서 따로 모은다 (대표전화·콜센터·팩스) */
+            var role = f.id === 'tel'
+              ? telRole(html, b, b.text.slice(Math.max(0, m.index - 14), m.index))
+              : '';
+            var name = f.id === 'tel' ? TEL_ROLES[role] : f.name;
+            var k = f.id + '|' + role + '|' + val;
+            if (!buckets[k]) buckets[k] = { field: f.id, role: role, fieldName: name, value: val, spots: [] };
             buckets[k].spots.push({ scope: scope, scopeName: scopeName, blockId: b.id, text: b.text });
           }
         });
       });
     }
 
-    scan('__shell__', '헤더·푸터', this.shellBlocks());
-    this.order.forEach(function (k) { scan(k, self.pageName(k), self.textBlocks(k)); });
+    scan('__shell__', '헤더·푸터', this.shellHtml(), this.shellBlocks());
+    this.order.forEach(function (k) { scan(k, self.pageName(k), self.pageHtml(k), self.textBlocks(k)); });
 
     var out = Object.keys(buckets).map(function (k) { return buckets[k]; });
     var rank = { tel: 0, email: 1, biz: 2, addr: 3 };
-    out.sort(function (a, b) { return (rank[a.field] - rank[b.field]) || (b.spots.length - a.spots.length); });
+    var rrank = { main: 0, call: 1, fax: 2 };
+    out.sort(function (a, b) {
+      return (rank[a.field] - rank[b.field]) ||
+        ((rrank[a.role] || 0) - (rrank[b.role] || 0)) ||
+        (b.spots.length - a.spots.length);
+    });
     return out;
+  };
+
+  /** 회사정보 한 항목을, 그 항목이 실제로 쓰인 자리에서만 바꾼다.
+
+      예전에는 문서 전체에서 글자를 찾아 바꿨다. 그래서
+        · 같은 번호를 쓰는 콜센터까지 대표전화로 함께 바뀌고
+        · 짧은 주소가 긴 주소의 앞부분과 겹쳐 뒤에 덧붙는
+      문제가 있었다. 이제는 그 역할로 쓰인 칸만 골라서 바꾼다. */
+  SiteDoc.prototype.replaceCompanyInfo = function (rec, to) {
+    var self = this;
+    var from = rec && rec.value;
+    var count = 0;
+    if (!from || from === to) return 0;
+
+    function work(html, blocks, setHtml) {
+      var edits = [];
+      blocks.forEach(function (b) {
+        var i = b.text.indexOf(from);
+        if (i < 0) return;
+        if (rec.field === 'tel' && rec.role &&
+            telRole(html, b, b.text.slice(Math.max(0, i - 14), i)) !== rec.role) return;
+        var raw = html.slice(b.start, b.end);
+        var n = raw.split(from).length - 1;
+        if (!n) return;
+        edits.push({ start: b.start, end: b.end, html: raw.split(from).join(to) });
+        count += n;
+      });
+      if (edits.length) setHtml(applyBlocks(html, edits));
+    }
+
+    var shell = this.shellHtml();
+    work(shell, this.shellBlocks(), function (h) { self.setShellHtml(h); });
+    this.order.forEach(function (k) {
+      var h = self.pageHtml(k);
+      work(h, self.textBlocks(k), function (nh) { self.setPageHtml(k, nh); });
+    });
+
+    /* 화면에는 안 나오지만 파일에 남아 있는 구버전 정의에도 같은 값이 있으면
+       함께 정리한다 (옛 연락처 잔존 방지) */
+    Object.keys(this.pagesBase).forEach(function (k) {
+      if (!self.pages[k] || self.pages[k].src !== 'override') return;
+      var h = self.pagesBase[k];
+      if (h.indexOf(from) < 0) return;
+      self.pagesBase[k] = h.split(from).join(to);
+      self.baseForceDirty = true;
+    });
+
+    return count;
   };
 
   /** 사이트 전체에서 특정 문자열을 다른 값으로 일괄 치환한다. */

@@ -3910,14 +3910,16 @@
       host.appendChild(el('div', { class: 'item' }, [
         el('div', { class: 'ih' }, [
           el('span', { class: 'badge', text: r.fieldName }),
-          el('span', { class: 'sect', style: 'font-size:12px;color:var(--slate2)', text: spots.join(' · ') + ' (' + r.spots.length + '곳)' })
+          el('span', { class: 'sect', style: 'font-size:12px;color:var(--slate2)', text: spots.join(' · ') + ' (' + r.spots.length + '곳에만 적용됩니다)' })
         ]),
         el('div', { class: 'row' }, [
           el('div', { style: 'flex:1;min-width:220px' }, [input]),
           el('button', { class: 'btn primary', text: '전체 적용', onclick: function () {
             var nv = input.value.trim();
             if (!nv || nv === r.value) return;
-            var n = S.doc.replaceEverywhere(r.value, nv);
+            /* 그 역할(대표전화·콜센터·팩스)로 쓰인 자리에만 적용한다.
+               예전처럼 문서 전체를 바꾸면 콜센터까지 같이 바뀐다. */
+            var n = S.doc.replaceCompanyInfo(r, nv);
             S.blockCache = {};
             S.changed.info += n;
             updateChangeUI();
